@@ -1,0 +1,303 @@
+import { useEffect, useId, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
+import { CalendarDays, ChartNoAxesColumn, House, ListTodo, LogOut, Sprout, Sticker, Users } from 'lucide-react'
+import * as api from '../api/index.js'
+import { noticeExpiry } from '../hooks/useLoad.js'
+import { homeFor, useSession } from '../store/session.js'
+import { initialOf } from '../utils/format.js'
+import Logo from './Logo.jsx'
+
+// The page shells. One product at two volumes (DESIGN.md section 11): the parent's shell is
+// white and quiet, the child's commits to navy. Both mark the current page the same way.
+
+const PARENT_NAV = [
+  { to: '/parent', label: 'Overview', Icon: House, end: true },
+  { to: '/parent/tasks', label: 'Tasks', Icon: ListTodo },
+  { to: '/parent/progress', label: 'Progress', Icon: ChartNoAxesColumn },
+  { to: '/parent/family', label: 'Family', Icon: Users },
+]
+const PARENT_MENU = [
+  { to: '/parent/settings', label: 'Settings' },
+  { to: '/report', label: 'Report a problem' },
+]
+const CHILD_NAV = [
+  { to: '/child', label: 'Today', Icon: CalendarDays, end: true, also: '/child/tasks' }, // a task is opened from Today
+  { to: '/child/growth', label: 'Growth', Icon: Sprout },
+  { to: '/child/stickers', label: 'Stickers', Icon: Sticker },
+]
+const CHILD_MENU = [
+  { to: '/privacy', label: 'What parents can see' },
+  { to: '/report', label: 'Report a problem' },
+]
+
+/**
+ * count is a number for one item: `to` is its path, `n` the number and `what` the words a
+ * screen reader hears after it. With `away` set the number shows only if it was asked for from
+ * another page: the item's own page is already showing the news, and what was counted there
+ * is out of date by the time the child leaves.
+ */
+function NavItems({ items, count }) {
+  const { pathname } = useLocation()
+  return items.map(({ to, label, Icon, end, also }) => {
+    const here = (end ? pathname === to : pathname.startsWith(to)) || (also && pathname.startsWith(also))
+    return (
+      <Link key={to} to={to} className="nav-item" aria-current={here ? 'page' : undefined}>
+        <Icon className="size-5 shrink-0" aria-hidden="true" />
+        {label}
+        {count?.to === to && count.n > 0 && !(count.away && count.askedAt === to) && (
+          <span className="nav-count">
+            {count.n}
+            <span className="sr-only"> {count.what}</span>
+          </span>
+        )}
+      </Link>
+    )
+  })
+}
+
+/**
+ * A number for the navigation: proofs waiting for a parent, results waiting for a child. Asked
+ * again on every page change, so it falls as soon as the thing is dealt with, and whenever the
+ * pages themselves reload: on focus and once a minute.
+ */
+function useCount(ask_) {
+  const { pathname } = useLocation()
+  const [count, setCount] = useState({ n: 0 })
+  useEffect(() => {
+    let current = true
+    const ask = () => ask_().then((n) => current && setCount({ n, askedAt: pathname }), noticeExpiry)
+    ask()
+    const timer = setInterval(ask, 60_000)
+    window.addEventListener('focus', ask)
+    return () => {
+      current = false
+      clearInterval(timer)
+      window.removeEventListener('focus', ask)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname])
+  return count
+}
+
+/** Always one tap away, because a parent and a child often share one device. */
+function SignOut({ className }) {
+  const signOut = useSession((s) => s.signOut)
+  return (
+    <button type="button" className={className} onClick={signOut}>
+      <LogOut className="size-5 shrink-0" aria-hidden="true" />
+      Sign out
+    </button>
+  )
+}
+
+/** The avatar button and the short menu it opens. A native popover: Escape and outside taps close it. */
+function AccountMenu({ items }) {
+  const user = useSession((s) => s.user)
+  const id = useId()
+  const close = () => document.getElementById(id)?.hidePopover()
+  const place = (event) => {
+    const at = document.getElementById(`${id}-button`).getBoundingClientRect()
+    event.currentTarget.style.top = `${at.bottom + 8}px`
+    event.currentTarget.style.right = `${document.documentElement.clientWidth - at.right}px`
+  }
+  return (
+    <>
+      <button
+        type="button"
+        id={`${id}-button`}
+        className="avatar size-11"
+        popoverTarget={id}
+        aria-label={`Account menu for ${user?.name}`}
+      >
+        {initialOf(user?.name)}
+      </button>
+      {createPortal(
+        <div id={id} popover="auto" className="menu" onBeforeToggle={place}>
+          <p className="type-small muted px-3 py-2">
+            Signed in as <span className="font-medium text-navy-950">{user?.name}</span>
+          </p>
+          {items.map(({ to, label }) => (
+            <Link key={to} to={to} className="nav-item" onClick={close}>
+              {label}
+            </Link>
+          ))}
+        </div>,
+        document.body,
+      )}
+    </>
+  )
+}
+
+export function ParentShell() {
+  const user = useSession((s) => s.user)
+  const count = { to: '/parent', ...useCount(api.countProofsWaiting), what: 'waiting for review' }
+  return (
+    <div className="lg:grid lg:min-h-page lg:grid-cols-[var(--container-sidebar)_minmax(0,1fr)] print:block">
+      <aside className="nav-rail sticky top-(--banner-h) hidden h-[calc(100dvh-var(--banner-h))] flex-col overflow-y-auto bg-white py-6 pr-7 pl-4 lg:flex print:hidden">
+        <Link to="/parent" className="mb-8 self-start">
+          <Logo />
+        </Link>
+        <nav aria-label="Main" className="grid gap-1">
+          <NavItems items={PARENT_NAV} count={count} />
+        </nav>
+        <div className="mt-auto grid gap-1 border-t pt-4">
+          <p className="flex items-center gap-3 px-3 py-2">
+            <span className="avatar" aria-hidden="true">
+              {initialOf(user?.name)}
+            </span>
+            <span className="min-w-0 truncate font-medium">{user?.name}</span>
+          </p>
+          {PARENT_MENU.map(({ to, label }) => (
+            <NavLink key={to} to={to} className="nav-item">
+              {label}
+            </NavLink>
+          ))}
+          <SignOut className="nav-item" />
+        </div>
+      </aside>
+
+      <header className="sticky top-(--banner-h) z-10 flex items-center justify-between gap-2 border-b bg-white py-2 pr-2 pl-4 lg:hidden print:hidden">
+        <Link to="/parent">
+          <Logo />
+        </Link>
+        <div className="flex items-center gap-1">
+          <SignOut className="btn btn-text whitespace-nowrap" />
+          <AccountMenu items={PARENT_MENU} />
+        </div>
+      </header>
+
+      <main id="main" tabIndex={-1} className="mx-auto w-full max-w-parent px-4 pt-6 pb-28 sm:px-8 lg:py-10 print:max-w-none print:p-0">
+        <Outlet />
+      </main>
+
+      <nav aria-label="Main" className="nav-bar grid-cols-4 bg-white lg:hidden print:hidden">
+        <NavItems items={PARENT_NAV} count={count} />
+      </nav>
+    </div>
+  )
+}
+
+export function ChildShell() {
+  // a result the child has not seen yet: the reward moment is waiting on Today
+  const count = { to: '/child', ...useCount(api.countNewResults), what: 'new', away: true }
+  return (
+    <div className="min-h-page overflow-x-clip">
+      <header className="on-navy growth-band sticky top-(--banner-h) z-10">
+        <div className="mx-auto flex max-w-child items-center gap-4 py-2 pr-2 pl-4 lg:py-3">
+          <Link to="/child">
+            <Logo />
+          </Link>
+          <nav aria-label="Main" className="hidden gap-1 lg:flex">
+            <NavItems items={CHILD_NAV} count={count} />
+          </nav>
+          <div className="ml-auto flex items-center gap-1">
+            <SignOut className="btn btn-text whitespace-nowrap" />
+            <AccountMenu items={CHILD_MENU} />
+          </div>
+        </div>
+      </header>
+
+      <main id="main" tabIndex={-1} className="volume-child type-body-child mx-auto w-full max-w-child px-4 pt-8 pb-28 lg:pb-12">
+        <Outlet />
+      </main>
+
+      <nav aria-label="Main" className="on-navy nav-bar grid-cols-3 lg:hidden">
+        <NavItems items={CHILD_NAV} count={count} />
+      </nav>
+    </div>
+  )
+}
+
+/** The moderator has one page, so the shell is only a bar. */
+export function ModeratorShell() {
+  return (
+    <div className="min-h-page">
+      <header className="flex items-center justify-between gap-2 border-b bg-white px-4 py-2">
+        <Link to="/admin/reports">
+          <Logo />
+        </Link>
+        <SignOut className="btn btn-text whitespace-nowrap" />
+      </header>
+      <main id="main" tabIndex={-1} className="mx-auto w-full max-w-parent px-4 py-6 sm:px-8 lg:py-10">
+        <Outlet />
+      </main>
+    </div>
+  )
+}
+
+/** Pages every signed-in role can open sit in that role's own shell. */
+export function RoleShell() {
+  const role = useSession((s) => s.user?.role)
+  if (role === 'parent') return <ParentShell />
+  if (role === 'child') return <ChildShell />
+  return <ModeratorShell />
+}
+
+/** Public pages, and Not found. The footer links only to pages that exist. */
+export function PublicShell() {
+  const user = useSession((s) => s.user)
+  return (
+    <div className="min-h-page flex flex-col">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b bg-white py-2 pr-2 pl-4">
+        <Link to="/">
+          <Logo />
+        </Link>
+        {user ? (
+          <Link to={homeFor(user)} className="btn btn-text">
+            Back to GrowKid
+          </Link>
+        ) : (
+          <div className="flex items-center gap-1">
+            <Link to="/login" className="btn btn-text">
+              Sign in
+            </Link>
+            <Link to="/signup" className="btn btn-secondary">
+              Create a parent account
+            </Link>
+          </div>
+        )}
+      </header>
+      <main id="main" tabIndex={-1} className="mx-auto w-full max-w-parent flex-1 px-4 py-6 sm:px-8 lg:py-10">
+        <Outlet />
+      </main>
+      <footer className="border-t bg-white">
+        <nav aria-label="Footer" className="mx-auto flex max-w-parent flex-wrap gap-x-4 px-2 py-2 sm:px-6">
+          <Link to="/privacy" className="btn btn-text">
+            Safety and privacy
+          </Link>
+          {!user && (
+            <>
+              <Link to="/login" className="btn btn-text">
+                Sign in
+              </Link>
+              <Link to="/signup" className="btn btn-text">
+                Create a parent account
+              </Link>
+            </>
+          )}
+        </nav>
+      </footer>
+    </div>
+  )
+}
+
+/**
+ * Sign in and Sign up. The navy band is the door frame the growth chart is drawn on: it runs
+ * across the top on a phone and down the left on a desktop, where it also holds the aside.
+ */
+export function AuthShell({ aside, children }) {
+  return (
+    <div className="lg:grid lg:min-h-page lg:grid-cols-[minmax(20rem,2fr)_3fr]">
+      <header className="on-navy door-band relative flex flex-col gap-6 px-6 pt-4 pb-6 lg:px-12 lg:py-10">
+        <Link to="/" className="self-start">
+          <Logo />
+        </Link>
+        <div className="mt-auto hidden lg:block">{aside}</div>
+      </header>
+      <main id="main" tabIndex={-1} className="px-6 py-8 sm:px-12 lg:py-16">
+        <div className="max-w-md">{children}</div>
+      </main>
+    </div>
+  )
+}

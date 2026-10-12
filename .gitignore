@@ -1,0 +1,39 @@
+# OS specific
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Global environment variables
+.env
+.env.local
+.env.*
+!.env.example
+
+# Dependencies and build output
+node_modules/
+dist/
+
+# Logs
+*.log
+
+# Word lock files, created while a .docx is open
+~$*
+
+# Browser automation working files
+.playwright-mcp/
+
+# Working brief for the current build phase, rewritten every phase
+/prompt.md

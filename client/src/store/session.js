@@ -1,0 +1,43 @@
+import { create } from 'zustand'
+import * as api from '../api/index.js'
+
+/** Where each role lands after signing in, and the part of the site that is theirs. */
+const HOME = { parent: '/parent', child: '/child', moderator: '/admin/reports' }
+const AREA = { parent: '/parent', child: '/child', moderator: '/admin' }
+
+export const homeFor = (user) => HOME[user.role]
+
+/** After sign-in: back to the page they were sent away from, if it is theirs to open. */
+export const destinationFor = (user, from) =>
+  from && (from.startsWith('/report') || from.startsWith(AREA[user.role])) ? from : HOME[user.role]
+
+export const useSession = create((set) => ({
+  /** undefined until the first check, then a User or null. */
+  user: undefined,
+  loadFailed: false,
+  /** Why the last session ended: 'expired', 'left' (they signed out), 'deleted' (the family's data) or null. */
+  ended: null,
+
+  load: async () => {
+    set({ loadFailed: false })
+    try {
+      set({ user: await api.getSession() })
+    } catch {
+      set({ loadFailed: true })
+    }
+  },
+  signIn: async (details) => set({ user: await api.signIn(details), ended: null }),
+  signUp: async (details) => set({ user: await api.signUp(details), ended: null }),
+  signOut: async () => {
+    // whatever the server answers, this device forgets the session: it may be a shared one
+    await api.signOut().catch(() => {})
+    set({ user: null, ended: 'left' })
+  },
+  /** Deletes the family's data, which also ends the session. Landing then says so, once. */
+  deleteFamily: async (password) => {
+    await api.deleteFamily(password)
+    set({ user: null, ended: 'deleted' })
+  },
+  /** The server said the session is gone. A late answer after signing out changes nothing. */
+  expire: () => set((s) => (s.user ? { user: null, ended: 'expired' } : s)),
+}))

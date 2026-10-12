@@ -1,0 +1,980 @@
+@import "tailwindcss";
+
+/*
+  Design tokens. The source of truth is Documentation/DESIGN.md, section 17: change it there first.
+  static: every token is also a CSS variable, e.g. var(--color-navy-800).
+*/
+@theme static {
+  /* Tailwind's default scales are switched off, so only the tokens below exist. */
+  --color-*: initial;
+  --text-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+  --breakpoint-*: initial;
+  --font-serif: initial;
+  --font-mono: initial;
+
+  /* Lexend does the work; Baloo 2 talks about the game. */
+  --font-sans: "Lexend", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Baloo 2", "Lexend", ui-rounded, system-ui, sans-serif;
+
+  --color-white: #FFFFFF;
+
+  /* Navy: structure, text, main actions and information. The light steps are the greys. */
+  --color-navy-50: #F5F6FC;
+  --color-navy-100: #E8EAF6;
+  --color-navy-200: #D3D7EC;
+  --color-navy-400: #8D94BA;
+  --color-navy-600: #4A5180;
+  --color-navy-800: #1F2A6B;
+  --color-navy-950: #0E1436;
+
+  /* Sprout: growth (XP, progress, approved). */
+  --color-sprout-100: #DFF6E8;
+  --color-sprout-300: #8FE0B1;
+  --color-sprout-500: #2EBD6B;
+  --color-sprout-800: #146C3A;
+
+  /* Sun: something earned. Always solid, never a background, text or button. */
+  --color-sun-300: #FCD77F;
+  --color-sun-500: #F7B733;
+  --color-sun-800: #8A5A00;
+
+  /* Coral: something to fix (sent back, overdue, errors, deleting). */
+  --color-coral-100: #FDE7E7;
+  --color-coral-500: #D93A40;
+  --color-coral-700: #A8262B;
+
+  /* Ember: time pressure (due soon). Used sparingly. */
+  --color-ember-100: #FFE8D4;
+  --color-ember-500: #D9620B;
+  --color-ember-800: #8F3D05;
+
+  --radius-tag: 6px;
+  --radius-control: 10px;
+  --radius-card: 16px;
+
+  /* Nothing at rest has a shadow. This one is for menus, dialogs and toasts. */
+  --shadow-overlay: 0 12px 32px -12px rgb(14 20 54 / 0.3);
+
+  /* Phone below sm, tablet from sm, desktop from lg. */
+  --breakpoint-sm: 40rem;
+  --breakpoint-lg: 64rem;
+
+  --container-child: 45rem;
+  --container-parent: 70rem;
+  --container-sidebar: 15rem;
+
+  --duration-press: 100ms;
+  --duration-state: 200ms;
+  --duration-overlay: 300ms;
+  --duration-reward: 600ms;
+  --duration-grow: 1000ms;
+  --duration-pause: 150ms;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-land: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-grow: cubic-bezier(0.45, 0, 0.25, 1);
+  --default-transition-duration: 200ms;
+  --default-transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* The XP number shown on the growth ruler. Registered as a whole number so it can count up. */
+@property --xp {
+  syntax: "<integer>";
+  inherits: false;
+  initial-value: 0;
+}
+
+/* Type roles (DESIGN.md section 6). Font sizes exist only through these. */
+@utility type-display {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 2rem;
+  line-height: 2.25rem;
+  @variant sm {
+    font-size: 2.5rem;
+    line-height: 2.75rem;
+  }
+}
+@utility type-game {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.75rem;
+  line-height: 2rem;
+}
+@utility type-game-lg {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 3rem;
+  line-height: 3rem;
+}
+@utility type-heading {
+  font-weight: 600;
+  font-size: 1.5rem;
+  line-height: 2rem;
+}
+@utility type-subheading {
+  font-weight: 600;
+  font-size: 1.125rem;
+  line-height: 1.75rem;
+}
+@utility type-body {
+  font-size: 1rem;
+  line-height: 1.5rem;
+}
+@utility type-body-child {
+  font-size: 1.125rem;
+  line-height: 1.75rem;
+}
+@utility type-small {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+@utility type-data {
+  font-weight: 600;
+  font-size: 1.5rem;
+  line-height: 2rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A full screen of page: the screen, less the no-network banner while it shows. */
+@utility min-h-page {
+  min-height: calc(100dvh - var(--banner-h));
+}
+
+@layer base {
+  *,
+  ::before,
+  ::after,
+  ::file-selector-button {
+    border-color: var(--color-navy-200);
+  }
+
+  :root {
+    /* The height of the no-network banner. OfflineBanner sets it while the banner shows. */
+    --banner-h: 0px;
+  }
+
+  html {
+    accent-color: var(--color-navy-800);
+    caret-color: var(--color-navy-800);
+    -webkit-tap-highlight-color: color-mix(in srgb, var(--color-navy-800) 12%, transparent);
+  }
+
+  /* No double-tap zoom on controls, so a tap answers at once. */
+  a,
+  button,
+  label,
+  summary,
+  input,
+  select,
+  textarea {
+    touch-action: manipulation;
+  }
+
+  summary::-webkit-details-marker {
+    display: none;
+  }
+
+  body {
+    @apply bg-navy-50 font-sans text-navy-950 antialiased;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  /* A page title. The child's shell turns it up (see .volume-child). */
+  h1 {
+    @apply type-heading;
+  }
+
+  :focus-visible {
+    outline: 3px solid var(--color-navy-800);
+    outline-offset: 3px;
+  }
+
+  ::selection {
+    background: var(--color-navy-800);
+    color: var(--color-white);
+  }
+
+  /* The page region that receives focus after each navigation is not a control. */
+  [tabindex="-1"]:focus-visible {
+    outline: none;
+  }
+
+  /* Reduced motion: every change of state is immediate. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+    }
+  }
+}
+
+@layer components {
+  /* Helper text and timestamps. Lightens itself on navy. */
+  .muted {
+    color: var(--color-navy-600);
+  }
+
+  /* A navy surface, such as the growth band at the top of child screens. */
+  .on-navy {
+    background: var(--color-navy-800);
+    color: var(--color-white);
+  }
+  .on-navy .muted {
+    color: var(--color-navy-200);
+  }
+  .on-navy :focus-visible {
+    outline-color: var(--color-white);
+  }
+  .on-navy ::selection {
+    background: var(--color-white);
+    color: var(--color-navy-800);
+  }
+
+  .skip-link {
+    position: fixed;
+    top: 0.75rem;
+    left: 0.75rem;
+    z-index: 30;
+    translate: 0 -200%;
+  }
+  .skip-link:focus {
+    translate: 0 0;
+  }
+
+  /* The logo lockup: mark plus wordmark. It scales with its font size. */
+  .logo {
+    @apply inline-flex items-center gap-[0.35em] font-display leading-none font-extrabold text-navy-800;
+    font-size: 1.75rem;
+  }
+  .logo svg {
+    width: 1.4em;
+    height: 1.4em;
+  }
+  .logo span {
+    translate: 0 0.06em;
+  }
+  .logo-lg {
+    font-size: 2.5rem;
+  }
+  .on-navy .logo {
+    color: var(--color-white);
+  }
+  /* The mark's tile. It darkens on a navy surface so it stays visible. */
+  .logo-tile {
+    fill: var(--color-navy-800);
+  }
+  .on-navy .logo-tile {
+    fill: var(--color-navy-950);
+  }
+
+  /* Buttons. One main action per screen. */
+  .btn {
+    @apply type-body inline-flex min-h-11 items-center justify-center gap-2 rounded-control px-5 font-semibold disabled:cursor-not-allowed disabled:opacity-50;
+    transition:
+      scale var(--duration-press) var(--ease-out),
+      background-color var(--duration-state) var(--ease-out);
+  }
+  .btn:active:not(:disabled) {
+    scale: 0.97;
+  }
+  .btn:disabled {
+    pointer-events: none;
+  }
+  /* A file input dressed as a button: the label is pressed, the input inside it takes the focus. */
+  .file-button {
+    cursor: pointer;
+  }
+  .file-button:has(input:focus-visible) {
+    outline: 3px solid var(--color-navy-800);
+    outline-offset: 3px;
+  }
+  .file-button:has(input:disabled) {
+    opacity: 0.5;
+    pointer-events: none;
+  }
+  /* The child's main button. */
+  .btn-lg {
+    @apply min-h-14 px-6;
+  }
+  .btn-primary {
+    @apply bg-navy-800 text-white hover:bg-navy-950;
+  }
+  .btn-approve {
+    @apply bg-sprout-500 text-navy-950 hover:bg-sprout-300;
+  }
+  .btn-secondary {
+    @apply border border-navy-600 bg-white text-navy-800 hover:bg-navy-100;
+  }
+  .btn-danger {
+    @apply bg-coral-500 text-white hover:bg-coral-700;
+  }
+  .btn-text {
+    @apply px-2 text-navy-800 underline underline-offset-4 hover:bg-navy-100;
+  }
+
+  /* Text inputs. The focus outline from the base layer stays on. */
+  .field {
+    @apply min-h-11 w-full rounded-control border border-navy-600 bg-white px-4 text-navy-950 placeholder:text-navy-600;
+  }
+  textarea.field {
+    @apply py-2.5;
+  }
+  .field:focus {
+    border-color: var(--color-navy-800);
+    box-shadow: inset 0 0 0 1px var(--color-navy-800);
+  }
+  .field[aria-invalid="true"] {
+    border-color: var(--color-coral-500);
+    box-shadow: inset 0 0 0 1px var(--color-coral-500);
+  }
+
+  /* Cards are flat: a border and no shadow. Never put a card inside a card. */
+  .card {
+    @apply rounded-card border bg-white p-4 sm:p-6;
+  }
+
+  /* Status tags. Use the StatusTag component so the icon and word always come with the colour. */
+  .tag {
+    @apply type-small inline-flex items-center gap-1 rounded-tag border border-transparent px-2 py-0.5 font-medium whitespace-nowrap;
+  }
+  .tag-neutral {
+    @apply border-navy-600 bg-white text-navy-600;
+  }
+  .tag-info {
+    @apply bg-navy-100 text-navy-800;
+  }
+  .tag-success {
+    @apply bg-sprout-100 text-sprout-800;
+  }
+  .tag-warning {
+    @apply bg-ember-100 text-ember-800;
+  }
+  .tag-danger {
+    @apply bg-coral-100 text-coral-700;
+  }
+
+  /* People are the only circles. */
+  .avatar {
+    @apply grid size-10 shrink-0 place-items-center rounded-full bg-navy-100 font-semibold text-navy-800;
+  }
+
+  /* Anything not yet earned or not yet added. */
+  .not-yet {
+    @apply border-2 border-dashed border-navy-400;
+  }
+
+  /* A filled icon means "earned": the points star and the streak flame. */
+  .icon-earned {
+    @apply fill-sun-500 text-sun-800;
+  }
+
+  /*
+    The growth ruler: level progress. Use the GrowthRuler component, which sets --at.
+    The marker is the pencil mark at the current value, so progress is never fill alone.
+  */
+  .ruler {
+    position: relative;
+    height: 1.75rem;
+  }
+  .ruler progress {
+    @apply block size-full appearance-none overflow-hidden rounded-tag border-0 bg-navy-100;
+  }
+  .ruler progress::-webkit-progress-bar {
+    background: var(--color-navy-100);
+  }
+  .ruler progress::-webkit-progress-value {
+    background: var(--color-sprout-500);
+  }
+  .ruler progress::-moz-progress-bar {
+    background: var(--color-sprout-500);
+  }
+  .ruler::before {
+    content: "";
+    position: absolute;
+    z-index: 1;
+    top: -0.375rem;
+    bottom: -0.375rem;
+    left: var(--at);
+    width: 2px;
+    translate: -1px 0;
+    background: currentColor;
+  }
+  /* XP waiting for a parent to approve: a dashed "not yet" stretch after the marker. */
+  .ruler-waiting {
+    position: absolute;
+    inset-block: 0;
+    left: var(--at);
+    width: var(--waiting);
+    border: 2px dashed var(--color-sprout-800);
+    border-radius: 0 var(--radius-tag) var(--radius-tag) 0;
+    background: var(--color-sprout-100);
+  }
+  /* The next level, at the far end of the ruler. Dashed, because it is not reached yet. */
+  .ruler-goal {
+    @apply type-game grid h-10 min-w-10 shrink-0 place-items-center rounded-tag border-2 border-dashed border-navy-400 px-1;
+  }
+  .on-navy .ruler-goal {
+    border-color: var(--color-navy-200);
+  }
+  /* Tick marks. Hard-edged stripes, not a colour gradient. */
+  .ruler::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: var(--radius-tag);
+    pointer-events: none;
+    background:
+      repeating-linear-gradient(90deg, rgb(14 20 54 / 0.4) 0 2px, transparent 2px 10%) 0 0 / 100% 55% no-repeat,
+      repeating-linear-gradient(90deg, rgb(14 20 54 / 0.22) 0 1px, transparent 1px 2%) 0 0 / 100% 28% no-repeat;
+  }
+
+  /* Stickers: a white die-cut edge, a short shadow, a little crooked, straight when touched. */
+  .sticker {
+    rotate: var(--tilt, 0deg);
+    filter: drop-shadow(0 2px 0 rgb(14 20 54 / 0.12)) drop-shadow(0 6px 8px rgb(14 20 54 / 0.16));
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .sticker {
+      transition:
+        rotate var(--duration-state) var(--ease-out),
+        scale var(--duration-state) var(--ease-out);
+    }
+  }
+  .sticker:hover {
+    rotate: 0deg;
+    scale: 1.06;
+  }
+}
+
+/* ------------------------------------------------------------------ shells and shared states */
+@layer components {
+  .on-navy .btn-text {
+    color: var(--color-white);
+  }
+  .on-navy .btn-text:hover {
+    background: var(--color-navy-950);
+  }
+
+  /* Navigation. The current page is marked like a pencil mark on a ruler. */
+  .nav-item {
+    @apply type-body relative flex min-h-11 items-center gap-3 rounded-control px-3 font-medium text-navy-600;
+    transition:
+      background-color var(--duration-state) var(--ease-out),
+      color var(--duration-state) var(--ease-out),
+      scale var(--duration-press) var(--ease-out);
+  }
+  .nav-item:hover {
+    @apply bg-navy-100 text-navy-950;
+  }
+  .nav-item:active {
+    scale: 0.97;
+  }
+  .nav-item[aria-current="page"] {
+    @apply font-semibold text-navy-950;
+  }
+
+  /* The parent's sidebar ends in a ruler edge. Hard-edged stripes, not a colour gradient. */
+  .nav-rail::after {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    right: 0;
+    width: 0.75rem;
+    pointer-events: none;
+    border-right: 1px solid var(--color-navy-200);
+    background:
+      repeating-linear-gradient(180deg, var(--color-navy-400) 0 1px, transparent 1px 2.5rem) right / 0.75rem 100% no-repeat,
+      repeating-linear-gradient(180deg, var(--color-navy-200) 0 1px, transparent 1px 0.5rem) right / 0.375rem 100% no-repeat;
+  }
+  .nav-rail .nav-item[aria-current="page"]::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: -1.75rem;
+    width: 1.5rem;
+    height: 2px;
+    translate: 0 -1px;
+    background: var(--color-navy-950);
+  }
+
+  /* The bottom bar on phones and tablets: the same ruler edge, turned on its side. */
+  .nav-bar {
+    @apply fixed inset-x-0 bottom-0 z-10 grid gap-1 border-t px-1 pt-2;
+    padding-bottom: max(0.25rem, env(safe-area-inset-bottom));
+  }
+  .nav-bar::before {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    height: 0.5rem;
+    pointer-events: none;
+    background:
+      repeating-linear-gradient(90deg, var(--color-navy-400) 0 1px, transparent 1px 2.5rem) top / 100% 0.5rem no-repeat,
+      repeating-linear-gradient(90deg, var(--color-navy-200) 0 1px, transparent 1px 0.5rem) top / 100% 0.25rem no-repeat;
+  }
+  .nav-bar .nav-item {
+    @apply type-small min-h-14 flex-col justify-center gap-0.5 px-1;
+  }
+  .nav-bar .nav-item[aria-current="page"]::after {
+    content: "";
+    position: absolute;
+    top: -0.5rem;
+    left: 50%;
+    width: 2px;
+    height: 0.875rem;
+    translate: -1px 0;
+    background: var(--color-navy-950);
+  }
+
+  /* The child's navigation is the louder volume: on navy, and the current page is a white tile. */
+  .on-navy .nav-item {
+    color: var(--color-navy-200);
+  }
+  .on-navy .nav-item:hover {
+    background: var(--color-navy-950);
+    color: var(--color-white);
+  }
+  .on-navy .nav-item[aria-current="page"] {
+    background: var(--color-white);
+    color: var(--color-navy-800);
+  }
+  .on-navy.nav-bar {
+    border-color: var(--color-navy-950);
+  }
+  .on-navy.nav-bar::before {
+    background:
+      repeating-linear-gradient(90deg, var(--color-navy-400) 0 1px, transparent 1px 2.5rem) top / 100% 0.5rem no-repeat,
+      repeating-linear-gradient(90deg, var(--color-navy-600) 0 1px, transparent 1px 0.5rem) top / 100% 0.25rem no-repeat;
+  }
+  .on-navy.nav-bar .nav-item[aria-current="page"]::after {
+    content: none;
+  }
+
+  /* The child's top band, with the ruler along its lower edge. */
+  .growth-band::after {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    bottom: 0;
+    height: 0.5rem;
+    pointer-events: none;
+    background:
+      repeating-linear-gradient(90deg, var(--color-navy-200) 0 1px, transparent 1px 2.5rem) bottom / 100% 0.5rem no-repeat,
+      repeating-linear-gradient(90deg, var(--color-navy-600) 0 1px, transparent 1px 0.5rem) bottom / 100% 0.25rem no-repeat;
+  }
+  /*
+    On Today the band opens to hold the level and the ruler. Its colour runs the full width of
+    the screen while its content keeps to the column. The child's shell clips the overhang.
+  */
+  .band-open {
+    position: relative;
+    isolation: isolate;
+  }
+  .band-open::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    inset-block: 0;
+    left: 50%;
+    width: 100vw;
+    translate: -50% 0;
+    background: var(--color-navy-800);
+  }
+  /* The child's volume: page titles in Baloo 2, and navigation with more to press. */
+  .volume-child h1 {
+    @apply type-display text-navy-800;
+  }
+  .on-navy .nav-item {
+    @apply min-h-12 font-semibold;
+  }
+
+  /* Sign in and Sign up: the navy band is the door frame, with the ruler along its edge. */
+  .door-band::after {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    bottom: 0;
+    height: 0.5rem;
+    pointer-events: none;
+    background:
+      repeating-linear-gradient(90deg, var(--color-navy-200) 0 1px, transparent 1px 2.5rem) bottom / 100% 0.5rem no-repeat,
+      repeating-linear-gradient(90deg, var(--color-navy-600) 0 1px, transparent 1px 0.5rem) bottom / 100% 0.25rem no-repeat;
+    @variant lg {
+      inset: 0 0 0 auto;
+      width: 0.75rem;
+      height: auto;
+      background:
+        repeating-linear-gradient(180deg, var(--color-navy-200) 0 1px, transparent 1px 2.5rem) right / 0.75rem 100% no-repeat,
+        repeating-linear-gradient(180deg, var(--color-navy-600) 0 1px, transparent 1px 0.5rem) right / 0.375rem 100% no-repeat;
+    }
+  }
+
+  /* A quiet divider between the sections of a public page: the ruler's tick marks, hanging from a line. */
+  .ruler-rule {
+    height: 0.5rem;
+    border-top: 1px solid var(--color-navy-200);
+    background:
+      repeating-linear-gradient(90deg, var(--color-navy-400) 0 1px, transparent 1px 2.5rem) top / 100% 0.5rem no-repeat,
+      repeating-linear-gradient(90deg, var(--color-navy-200) 0 1px, transparent 1px 0.5rem) top / 100% 0.25rem no-repeat;
+  }
+
+  /* The account menu: a native popover under the avatar in the top bar. */
+  .menu {
+    @apply rounded-control border bg-white p-2 text-navy-950 shadow-overlay;
+    position: fixed;
+    inset: 3.75rem 0.5rem auto auto;
+    min-width: 14rem;
+  }
+
+  /* A confirmation for something destructive. A sheet from the bottom on phones. */
+  .dialog {
+    @apply rounded-card border bg-white p-6 text-navy-950 shadow-overlay;
+    margin: auto;
+    width: min(28rem, 100% - 2rem);
+    @variant max-sm {
+      margin: auto 0 0;
+      width: 100%;
+      max-width: 100%;
+      border-radius: var(--radius-card) var(--radius-card) 0 0;
+    }
+  }
+  .dialog {
+    overscroll-behavior: contain;
+  }
+  .dialog::backdrop {
+    background: color-mix(in srgb, var(--color-navy-950) 50%, transparent);
+  }
+
+  /* Loading outlines are still. Nothing on a page moves in a loop. */
+  .skeleton {
+    @apply rounded-tag bg-navy-100;
+  }
+  .on-navy .skeleton {
+    background: var(--color-navy-600);
+  }
+
+  /* A message that stays beside the thing it is about. */
+  .message {
+    @apply type-small flex items-start gap-2 rounded-control p-3;
+  }
+  .message-info {
+    @apply bg-navy-100 text-navy-800;
+  }
+  .message-success {
+    @apply bg-sprout-100 text-sprout-800;
+  }
+  .message-warning {
+    @apply bg-ember-100 text-ember-800;
+  }
+  .message-danger {
+    @apply bg-coral-100 text-coral-700;
+  }
+}
+
+/* ------------------------------------------------------------------ tasks and proof */
+@layer components {
+  /* The child's task card answers a press anywhere on it: its button's hit area covers the card. */
+  .task-card {
+    position: relative;
+    transition:
+      scale var(--duration-press) var(--ease-out),
+      border-color var(--duration-state) var(--ease-out);
+  }
+  .task-card:has(.press-all:hover) {
+    border-color: var(--color-navy-800);
+  }
+  .task-card:has(.press-all:active) {
+    scale: 0.98;
+  }
+  .press-all::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+  /* The card moves, not the button: a button that moved would take the hit area with it. */
+  .btn.press-all:active {
+    scale: none;
+  }
+
+  /* A task as one row of a list. The whole row is the link. */
+  .task-row {
+    @apply flex min-h-14 items-center gap-3 px-4 py-3 sm:px-6;
+    transition: background-color var(--duration-state) var(--ease-out);
+  }
+  .task-row:hover {
+    background: var(--color-navy-50);
+  }
+  .task-row:active {
+    background: var(--color-navy-100);
+  }
+  .task-row:focus-visible {
+    outline-offset: -3px;
+  }
+
+  /* Where a proof goes, while a file is held over it. */
+  .drop-over {
+    border-color: var(--color-navy-800);
+    background: var(--color-navy-100);
+  }
+
+  /* A state that has just changed settles into place, once. Not a celebration. */
+  @keyframes settle {
+    from {
+      opacity: 0;
+      translate: 0 0.5rem;
+    }
+  }
+  .settle {
+    animation: settle var(--duration-state) var(--ease-land) both;
+  }
+}
+
+/* ------------------------------------------------------------------ categories and review */
+@layer components {
+  /*
+    The category tile. The icon is the category; the colour is the task's status, in the same
+    roles as the status tag, so no colour leaves its job (DESIGN.md section 10).
+  */
+  .category-tile {
+    @apply grid shrink-0 place-items-center rounded-control;
+  }
+  .category-todo {
+    @apply bg-navy-800 text-white;
+  }
+  .category-review {
+    @apply bg-navy-100 text-navy-800;
+  }
+  .category-overdue,
+  .category-sentBack {
+    @apply bg-coral-100 text-coral-700;
+  }
+  .category-approved {
+    @apply bg-sprout-500 text-navy-950;
+  }
+
+  /* A radio dressed as a tile, for choosing one of a few things with an icon each. */
+  .choice {
+    @apply type-small flex min-h-11 cursor-pointer flex-col items-center gap-1 rounded-control border border-navy-600 bg-white px-1 py-3 text-center font-medium;
+    transition:
+      background-color var(--duration-state) var(--ease-out),
+      scale var(--duration-press) var(--ease-out);
+  }
+  .choice:hover:not(:has(input:checked)) {
+    background: var(--color-navy-100);
+  }
+  .choice:active {
+    scale: 0.97;
+  }
+  .choice:has(input:checked) {
+    @apply border-navy-800 bg-navy-800 text-white;
+  }
+  .choice:has(input:focus-visible) {
+    outline: 3px solid var(--color-navy-800);
+    outline-offset: 3px;
+  }
+  .choice:has(input[aria-invalid="true"]) {
+    border-color: var(--color-coral-500);
+  }
+
+  /* The approval stamp: who and when. */
+  .stamp {
+    @apply flex items-center gap-2 font-medium text-sprout-800;
+  }
+  .on-navy .stamp {
+    color: var(--color-sprout-300);
+  }
+
+  /* How many proofs are waiting, on Overview's navigation item. */
+  .nav-count {
+    @apply type-small ml-auto grid h-6 min-w-6 place-items-center rounded-tag bg-navy-800 px-1.5 font-semibold text-white tabular-nums;
+  }
+  .nav-bar .nav-count {
+    @apply h-5 min-w-5 px-1;
+    position: absolute;
+    top: 0;
+    left: calc(50% + 0.625rem);
+    margin: 0;
+  }
+
+  /*
+    Approve and Send back. On a phone the bar stays at the bottom of the screen, above the
+    navigation, while the proof is looked at; from a desktop width it sits beside the proof.
+    Writing the note takes it out of the way of the keyboard.
+  */
+  .review-bar {
+    @apply sticky z-10 -mx-4 border-t bg-white px-4 py-3 sm:-mx-8 sm:px-8;
+    bottom: calc(4.0625rem + max(0.25rem, env(safe-area-inset-bottom))); /* the height of .nav-bar */
+    @variant lg {
+      position: static;
+      margin: 0;
+      border: 0;
+      background: none;
+      padding: 0;
+    }
+  }
+  .review-open {
+    position: static;
+  }
+}
+
+/* ------------------------------------------------------------------ rewards */
+@layer components {
+  /*
+    The growth ruler moves by transform alone: its fill is scaled and its marker is carried on a
+    rail that is shifted, so the reward moment can grow it (DESIGN.md sections 10 and 15).
+  */
+  .ruler-growth {
+    overflow-x: clip;
+  }
+  .ruler-growth progress::-webkit-progress-value {
+    background: transparent;
+  }
+  .ruler-growth progress::-moz-progress-bar {
+    background: transparent;
+  }
+  .ruler-clip {
+    @apply absolute inset-0 overflow-hidden rounded-tag;
+  }
+  .ruler-fill {
+    @apply absolute inset-0 origin-left bg-sprout-500;
+    transition: scale var(--duration-grow) var(--ease-grow);
+  }
+  .ruler-growth::before {
+    right: 0;
+    left: 0;
+    width: auto;
+    border-left: 2px solid currentColor;
+    background: none;
+    translate: min(var(--at), 100% - 2px) 0;
+    transition: translate var(--duration-grow) var(--ease-grow);
+  }
+  /*
+    The XP number counts up on the ruler's own clock, during the reward moment and at no other
+    time: the one number allowed to change by itself (DESIGN.md section 15). A browser without
+    registered properties shows the new number at once.
+  */
+  .xp-count {
+    counter-reset: xp var(--xp) xp-left calc(var(--xp-room) - var(--xp));
+  }
+  .xp-now::after {
+    content: counter(xp);
+  }
+  .xp-left::after {
+    content: counter(xp-left);
+  }
+  .xp-growing {
+    transition: --xp var(--duration-grow) var(--ease-grow);
+  }
+
+  /* The reward moment: a sticker, or a new level number, lands once. Never loops. */
+  @keyframes land {
+    from {
+      opacity: 0;
+      scale: 1.6;
+    }
+  }
+  .land {
+    animation: land var(--duration-reward) var(--ease-land) both;
+  }
+
+  /* The streak's day marks: gold for a day that counted, dashed for one that changed nothing, grey for one missed. */
+  .day-mark {
+    @apply type-small grid size-7 place-items-center rounded-tag font-semibold;
+  }
+  .day-done {
+    @apply bg-sun-500 text-navy-950;
+  }
+  .day-none {
+    @apply border-2 border-dashed border-navy-400 text-navy-600;
+  }
+  .day-missed {
+    @apply bg-navy-200 text-navy-600;
+  }
+  .on-navy .day-none {
+    color: var(--color-navy-200);
+  }
+  .on-navy .day-missed {
+    @apply bg-navy-600 text-navy-200;
+  }
+
+  /* A slot on the sticker chart: the sticker or its dashed outline, and its name. */
+  .sticker-slot {
+    @apply flex w-full flex-col items-center gap-2 rounded-control px-1 py-2 text-center;
+    transition:
+      background-color var(--duration-state) var(--ease-out),
+      scale var(--duration-press) var(--ease-out);
+  }
+  .sticker-slot:hover,
+  .sticker-slot[aria-pressed="true"] {
+    background: var(--color-navy-100);
+  }
+  .sticker-slot:active {
+    scale: 0.97;
+  }
+
+  /* A count on the child's navy navigation. */
+  .on-navy .nav-count {
+    @apply bg-sun-500 text-navy-950;
+  }
+}
+
+/* ------------------------------------------------------------------ progress and its report */
+@layer components {
+  /*
+    A week of bars: the parent's one chart (DESIGN.md section 11). Each bar is growth-green with
+    the ruler's ink mark across its top, so its height never rests on a pale fill alone, and each
+    carries its number. The bars stand on the ruler's edge.
+  */
+  .bars {
+    @apply grid grid-flow-col text-center; /* no gap: the wells join into one baseline */
+    grid-auto-columns: minmax(0, 1fr);
+    max-width: 32rem;
+  }
+  .bar-well {
+    @apply flex h-40 flex-col items-center justify-end;
+    border-bottom: 2px solid var(--color-navy-950);
+    background: repeating-linear-gradient(90deg, rgb(14 20 54 / 0.4) 0 1px, transparent 1px 25%) bottom / 100% 0.375rem no-repeat;
+  }
+  .bar {
+    width: min(70%, 3rem);
+    height: calc(var(--part) * (100% - 2.5rem)); /* the room left under the number */
+    border-top: 2px solid var(--color-navy-950);
+    background: var(--color-sprout-500);
+  }
+
+  /* The child whose progress is open, among the others. Selected: the 2 px navy edge. */
+  .btn-switch {
+    @apply pl-2 font-medium;
+  }
+  .btn-switch[aria-current="page"] {
+    @apply bg-navy-100;
+    box-shadow: inset 0 0 0 1px var(--color-navy-800);
+    border-color: var(--color-navy-800);
+  }
+}
+
+/*
+  Paper. Progress prints as the report: white, with its colours kept, because the bars and the
+  day marks mean nothing without them. Each shell hides its own navigation with print:hidden.
+*/
+@media print {
+  @page {
+    margin: 16mm;
+  }
+  body {
+    background: var(--color-white);
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

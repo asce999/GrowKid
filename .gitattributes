@@ -1,0 +1,2 @@
+# Keep LF line endings on every machine, so Windows checkouts match what is stored
+* text=auto eol=lf
