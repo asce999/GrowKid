@@ -16,7 +16,7 @@ Three commitments follow from this:
 
 1. **Structure is calm; earned things are loud.** Screens are flat, rectangular and mostly white and navy. Colour, unusual shapes and motion are saved for progress and achievements, so they still mean something when they appear.
 2. **A colour means one thing everywhere.** Green is growth, gold is something earned, coral is something to fix. Nothing is coloured for decoration.
-3. **Nothing is secret.** Harmful challenges work through secrecy. Every status in GrowKid says who did what and when, and a child can see everything a parent sees about them.
+3. **Nothing is secret.** Harmful challenges work through secrecy. Every status in GrowKid says who did what and when, and a child can see everything a parent sees about them. The one exception is a sealed surprise, which is about a reward, not about the child (section 13).
 
 ## 2. Product personality
 
@@ -160,7 +160,20 @@ Status always shows icon, word and colour together:
 | Deadline passed | `CircleAlert` | Danger | Overdue |
 | Locked sticker | `Lock` | Muted | Not earned yet |
 
-Other fixed meanings: `Star` points, `Flame` streak, `Sprout` level and growth, `ShieldCheck` safety and privacy, `BadgeCheck` the approval stamp.
+Other fixed meanings: `Star` points, `Flame` streak, `Sprout` level and growth, `ShieldCheck` safety and privacy, `BadgeCheck` the approval stamp, `Gift` rewards and a sealed surprise, `Flag` the weekly quest, `Pin` the task a child chose to do next.
+
+A parent can add a cheer to an approval. There are six, each with one icon and its words:
+
+| Kind | Icon | Words |
+|---|---|---|
+| proud | `Heart` | Proud of you |
+| tidy | `Sparkles` | Super tidy |
+| brave | `Mountain` | That was brave |
+| clever | `Lightbulb` | Clever thinking |
+| kind | `HandHeart` | So kind |
+| effort | `BicepsFlexed` | Great effort |
+
+A cheer's icon is an outline in the text colour. It is never filled and never gold.
 
 A task has one of six categories, in words a parent would use, each with one icon:
 
@@ -196,14 +209,23 @@ The game sits on what was earned, not on the work. A task is called a task and d
 | Points | Gold star and an ink number | No gold background. Shown on a task before it is done, as what the task is worth. |
 | Level | A numbered mark on the ruler; "Level 7" in Baloo 2 | The ruler always shows the current level, the next one and the distance: "350 XP to level 8". The next level is the dashed tile at the far end of the ruler: dashed because it is not reached yet. |
 | Progress | The growth ruler: a ticked bar with an ink marker at the current value | Never fill alone. Never a ring or a percentage with no meaning. |
-| Badges and achievements | Stickers. The shape says what kind: seal for task counts, shield for streaks, hexagon for levels, star for a skill. The colour follows the kind too: gold seals and stars, navy shields with a gold flame, green hexagons, green being the colour of growth. Icons: `Check` on a seal, `Flame` on a shield, `Sprout` on a hexagon, `Star` on a star. | Each sticker has a name and one sentence saying what earns it. The set is the eleven listed in the sitemap, section 12. |
-| Sticker chart | A grid of earned stickers and dashed empty slots | Empty slots show what is possible. No "almost there" teasing. |
+| Badges and achievements | Stickers. The shape says what kind: seal for task counts, shield for streaks, hexagon for levels, stars for a skill or a weekly quest. The colour follows the kind too: gold seals and stars, navy shields with a gold flame, green hexagons, green being the colour of growth. Icons: `Check` on a seal, `Flame` on a shield, `Sprout` on a hexagon, `Star` on a star. | Each sticker has a name and one sentence saying what earns it. The set is the fourteen listed in the sitemap, section 12. |
+| Sticker chart | A grid of earned stickers and dashed empty slots | Empty slots show what is possible. Stickers not yet earned show how far along the child is, in numbers. |
 | Streak | Gold flame, a number in Baloo 2, and a row of seven day marks, each a small square with the day's letter: solid gold for a day that counted, a dashed outline for a day that changed nothing, flat grey for a missed day. The flame is an outline until the streak is at least one. | A missed day ends a streak quietly and the best streak is kept. No countdowns and no "you will lose it" messages. |
+| Rest day | A day mark with a solid `navy-800` border on white (on the band: `navy-200` on `navy-950`), with the day's letter | Set by a parent. Never missed; the streak survives it. Read out as "a rest day". |
+| Streak reminder | One line on Today's band, under the streak, with an outline `Flame` | Only when a task is due today, is still open, no proof was sent today, and today is not a rest day. Factual: "A task is due today. Send proof for it to keep your 5-day streak." Never guilt, never a countdown. |
+| Weekly quest | On Today's band, under the gains: `Flag`, "This week’s quest", the bonus as points, a short ruler (`ruler quest-ruler`) with its marker, and "3 of 5 tasks approved this week. 2 to go." | Set by a parent. Counts tasks by the week their proof was sent. Completes once a week. The bonus is points to spend, not XP. |
+| Sealed surprise | `Gift` and "A surprise is sealed inside. It opens when the quest is complete." | The parent writes it. The child sees what unlocks it, never what it is, until it opens. Not chance: the parent chose it and the condition is shown. |
+| Reward shop | The child's Rewards page: points to spend, then rewards as rows with their cost and "Ask for this", then the child's requests with their answers | Asking holds the points; "Not this time" returns them. Spending never lowers XP, level or points earned. |
+| Cheer | An outline icon and the cheer's words, then the parent's line in quotes, under the approval stamp | Optional, chosen by the parent when approving. |
+| Growth path | On Growth: the current level and the next five, as a vertical line of level tiles (solid for the current one, dashed ahead), with the XP each one starts at and any level sticker waiting there | Shows the road ahead. Tiles are not buttons. |
+| Next stickers | Up to three stickers not yet earned, closest first, each as a dashed outline with "7 of 10 tasks approved" | Progress toward a sticker is shown in numbers with units. |
+| Family leaderboard | On Growth, only when a parent turns it on and there are two or more children: siblings in order of tasks approved this week, with "you" marked | Siblings only. Task counts only, never XP or level. Starts again every Monday. |
 | Milestone | A level mark on the ruler, or a streak length (7, 30 days), that awards a sticker | |
 | Task ("quest") | A card: category tile, title, what to do, due time, points, status | Not renamed or themed. The category tile is the only flavour: a square tile holding the category's icon, 48 px on a card and 40 px in a row. The icon says what kind of task it is; the tile's colour says where the task stands, in the same roles as the status tag, so no colour leaves its job. Solid navy while the task is to do, pale navy in review, pale coral when it is overdue or sent back, solid green once it is approved. |
 | Completion | Sending proof moves the task to "In review" | Nothing is awarded until a parent approves. The screen says so. |
 | Verification | An approval stamp on the task: the seal outline with a tick, plus who and when ("Approved by Mum, today 6:40 pm") | Sending back needs a note. The child sees the note and a "Try again" button. |
-| Reward moment | The one animation in the product, on Today's band, in a fixed order: the ruler grows from where the child last saw it to where it is now, and the XP number counts up with it; if a level was passed, the ruler fills, the level number lands and the ruler grows again from the start; then each new sticker lands. The ruler takes the slower `grow` duration on the `ease-grow` curve, so it reads as growing; a landing takes the `reward` duration on `ease-land`, with no overshoot; a short `pause` separates one step from the next. Everything moves by transform and opacity only, except the XP number, which changes while the ruler grows and at no other time. Everything approved since the last visit is gathered into this one sequence, with each reason written beside it. | Only on approval, a new sticker or a level-up. Once: never on reload, never looping. With reduced motion the new state simply appears. |
+| Reward moment | The one animation in the product, on Today's band, in a fixed order: the ruler grows from where the child last saw it to where it is now, and the XP number counts up with it; if a level was passed, the ruler fills, the level number lands and the ruler grows again from the start; then each new sticker lands, and then any weekly quest the approval completed. The ruler takes the slower `grow` duration on the `ease-grow` curve, so it reads as growing; a landing takes the `reward` duration on `ease-land`, with no overshoot; a short `pause` separates one step from the next. Everything moves by transform and opacity only, except the XP number, which changes while the ruler grows and at no other time. Everything approved since the last visit is gathered into this one sequence, with each reason written beside it. | Only on approval, a new sticker or a level-up. Once: never on reload, never looping. With reduced motion the new state simply appears. |
 
 ## 11. Parent vs child experience
 
@@ -213,7 +235,7 @@ The same tokens, type, shapes and icons. What changes is what leads, how dense i
 |---|---|---|
 | Order of priority | Clarity, oversight, action, insight | Clarity, action, progress, reward |
 | Home leads with | Proofs waiting for review, then this week's tasks | The one next task, then the growth ruler, then new stickers |
-| Navigation | Sidebar on desktop, bottom bar on mobile: Overview, Tasks, Progress, Family. Overview carries the count of proofs waiting. | Bottom bar with at most three places: Today, Growth, Stickers |
+| Navigation | Sidebar on desktop, bottom bar on mobile: Overview, Tasks, Rewards, Progress, Family. Overview carries the count of proofs waiting and Rewards the count of requests waiting. | Bottom bar with four places: Today, Growth, Stickers, Rewards |
 | Layout | Lists and tables; several things per screen | One job per screen in a single column, at most 720 px wide even on desktop |
 | Colour | Restrained: white and navy, colour only in status and charts | Committed: the navy growth band, full-colour stickers |
 | Type | Lexend headings; Baloo 2 only on game numbers | Baloo 2 page titles and numbers; 18 px body |
@@ -225,12 +247,12 @@ The same tokens, type, shapes and icons. What changes is what leads, how dense i
 ## 12. UX principles
 
 1. **The next step is always on screen.** The child's home opens on the next task; the parent's on the proofs waiting.
-2. **Nothing earned in secret, nothing watched in secret.** Every status shows who and when. The child can see what the parent sees about them.
+2. **Nothing earned in secret, nothing watched in secret.** Every status shows who and when. The child can see what the parent sees about them; only a sealed surprise waits until it opens (section 13).
 3. **Every reward says why.** Points, XP and stickers always name the task or rule that earned them.
 4. **Reviews teach.** A proof cannot be sent back without a note, and the child always gets a way to try again. The word shown is "Sent back", not "Rejected".
 5. **Real things look real.** Tasks use plain words and proof photos are shown large. Only earned things are dressed as a game.
 6. **Progress is always readable.** Where you are, what is next and how far, in numbers with units.
-7. **Calm beats urgent.** No countdowns, no loss warnings, nothing designed to pull a child back to the screen. The goal is the task, not time in the app.
+7. **Engagement comes through the task.** Every pull back to GrowKid (a quest, a reward, a streak reminder, a sibling's week) leads to doing a real task and sending proof. No countdowns, no guilt, no reward for opening the app, nothing left to chance. Factual reminders are allowed on Today and nowhere else.
 8. **One screen, one main action.** Especially for the child.
 9. **Safety is plain.** Reporting, privacy and account controls look like ordinary serious interface, are never themed as a game, and are reachable from every screen.
 10. **Empty and broken states give the next step.** They say what happened and what to do, with one action.
@@ -255,11 +277,11 @@ Visual:
 Behaviour:
 
 - Numbers the system does not really compute, such as a "productivity score".
-- Countdown timers, loss-framed streak messages, or rewards for simply opening the app.
-- Random rewards: spins, loot boxes, mystery prizes.
-- Ranking children against each other. (The synopsis lists opt-in leaderboards as future scope; they are not in this design.)
+- Countdown timers, guilt wording, or rewards for simply opening the app.
+- Random rewards: spins, loot boxes, mystery prizes. A sealed surprise is not random: the parent writes it and the child sees what opens it.
+- Ranking children outside their own family, or ranking siblings without the parent turning it on. The family leaderboard counts tasks only.
 - Guilt wording on the button that declines something.
-- Anything the parent can see about the child that the child cannot.
+- Anything the parent can see about the child that the child cannot. The one thing a child does not see is a sealed surprise, which is about a reward, not about them, and only until it opens.
 - Celebration animation for routine actions.
 - More than one main button on a screen.
 - Dialogs for routine steps.
@@ -309,8 +331,8 @@ Categories only. Components are specified when they are built.
 | Inputs | Text, long text, select, date and time (native), file and camera (native), checkbox, radio, switch | Both |
 | Tasks | Task card, task row, task detail header, status tag, due indicator, category tile | Both |
 | Proof | Proof uploader, proof viewer, review bar, feedback note, approval stamp | Uploader: child. Review: parent. |
-| Progress | Growth ruler, step tracker (to do, in review, approved), streak week | Mostly child |
-| Rewards | Points display, XP gain, sticker, sticker chart, reward moment | Mostly child |
+| Progress | Growth ruler, step tracker (to do, in review, approved), streak week, rest day mark | Mostly child |
+| Rewards | Points display, XP gain, sticker, sticker chart, reward moment, quest bar, sealed surprise, cheer, reward list, request row, growth path, next stickers, family leaderboard | Mostly child. Reward list, request row, quest setup and cheer: parent too. |
 | Feedback | Toast, inline message, banner, dialog or sheet, confirmation | Both |
 | Data | Table, list, statistic, bar chart, streak calendar | Parent |
 | People | Avatar, child switcher | Parent |
@@ -407,24 +429,30 @@ No looping animation and no entrance animation on page content.
 ### Assumptions to confirm
 
 - **Age.** The synopsis gives no age range; this document assumes 8 to 14.
-- **Points and XP.** The poster shows both, so the design shows both. If the scoring engine makes them one number, drop the separate points display and keep the ruler.
+- **Points and XP.** Separate since the engagement layer: XP and points earned only grow; `balance` is what can be spent in the reward shop.
 - **Badges.** Which stickers exist and what earns each comes from the scoring rules. The shape-to-kind mapping in section 10 is a proposal.
 - **Task categories.** Accepted on 9 October 2026: tasks have a category field, and the six categories in section 8 are the set. Changing the set means changing section 8 first.
 - **Fonts** load from Google Fonts. Self-host them if the demo must run offline.
+- **Engagement layer.** Its rules are the sitemap's rules 17 to 24, accepted on 30 October 2026.
 
 ### What the code has today
 
-`client/src` implements the foundations of this document and all eleven steps of the sitemap's build order, so every one of the 19 pages exists: the shells, sign in, sign up, Family and the child form, tasks on both sides, review and Overview, the rewards, Progress with its report, Settings, reporting with the moderator's page, and the two public pages, Landing and Safety and privacy. The whole loop runs: a parent creates a task, the child sends proof, the parent sends it back with a note or approves it, and on approval the child sees the reward moment on Today, keeps a streak, earns stickers and can look back at all of it on Growth and Stickers. The server does not exist yet, so `api/fake.js` stands in for it.
+`client/src` implements the foundations of this document and all eleven steps of the sitemap's build order, so every one of the 21 pages exists: the shells, sign in, sign up, Family and the child form, tasks on both sides, review and Overview, the rewards, Progress with its report, Settings, reporting with the moderator's page, and the two public pages, Landing and Safety and privacy. The whole loop runs: a parent creates a task, the child sends proof, the parent sends it back with a note or approves it, and on approval the child sees the reward moment on Today, keeps a streak, earns stickers and can look back at all of it on Growth and Stickers. The engagement layer sits on that loop and every piece of it is built: a reward shop on both sides (the child asks, the parent answers), a weekly quest with an optional sealed surprise, parent cheers with an approval, the growth path and the next stickers, the streak reminder, rest days, the child choosing the next task, and a family leaderboard that is off until a parent turns it on in Settings. The server does not exist yet, so `api/fake.js` stands in for it.
 
 | File | What it holds |
 |---|---|
-| `index.css` | Every token in section 17. The type roles as utilities: `type-display`, `type-game`, `type-game-lg`, `type-heading`, `type-subheading`, `type-body`, `type-body-child`, `type-small`, `type-data`. The base classes: `btn`, `file-button`, `field`, `card`, `tag`, `avatar`, `not-yet`, `icon-earned`, `on-navy`, `muted`, `ruler` (with `ruler-waiting` and `ruler-goal`), `sticker`, `logo`. For the shells and shared states: `nav-item`, `nav-rail`, `nav-bar`, `growth-band`, `band-open`, `door-band`, `volume-child`, `menu`, `dialog`, `skeleton`, `message`, and the utility `min-h-page`. For tasks, proof and review: `task-card`, `press-all`, `task-row`, `drop-over`, `settle`, `category-tile` (coloured by status), `choice`, `stamp`, `nav-count`, `review-bar`. For rewards: `ruler-growth` with `ruler-fill` (the ruler that moves by transform), `xp-count` with `xp-now` and `xp-left` (the two XP numbers, which count while the ruler grows), `land`, `day-mark`, `sticker-slot`. For Progress: `bars` with `bar-well` and `bar` (the weekly chart), `btn-switch` (the child switcher), and the print rules that turn Progress into the report. For the public pages: `ruler-rule`, the ruler's tick marks as a quiet divider between sections. |
+| `index.css` | Every token in section 17. The type roles as utilities: `type-display`, `type-game`, `type-game-lg`, `type-heading`, `type-subheading`, `type-body`, `type-body-child`, `type-small`, `type-data`. The base classes: `btn`, `file-button`, `field`, `card`, `tag`, `avatar`, `not-yet`, `icon-earned`, `on-navy`, `muted`, `ruler` (with `ruler-waiting` and `ruler-goal`), `sticker`, `logo`. For the shells and shared states: `nav-item`, `nav-rail`, `nav-bar`, `growth-band`, `band-open`, `door-band`, `volume-child`, `menu`, `dialog`, `skeleton`, `message`, and the utility `min-h-page`. For tasks, proof and review: `task-card`, `press-all`, `task-row`, `drop-over`, `settle`, `category-tile` (coloured by status), `choice`, `stamp`, `nav-count`, `review-bar`. For rewards: `ruler-growth` with `ruler-fill` (the ruler that moves by transform), `xp-count` with `xp-now` and `xp-left` (the two XP numbers, which count while the ruler grows), `land`, `day-mark` and `day-rest` (a rest day a parent set), `sticker-slot`, `quest-ruler` (the weekly quest's slimmer ruler), and the growth path's `path-step`, `path-here` and `path-level`. For Progress: `bars` with `bar-well` and `bar` (the weekly chart), `btn-switch` (the child switcher), and the print rules that turn Progress into the report. For the public pages: `ruler-rule`, the ruler's tick marks as a quiet divider between sections. |
 | `components/Logo.jsx` | The mark and the lockup |
 | `components/StatusTag.jsx` | The six states in section 8 |
 | `components/GrowthRuler.jsx` | Level progress with its marker, the next level at the far end, and the dashed stretch of XP waiting for approval. Given the score the child last saw, it grows from there with the XP numbers counting beside it: the first part of the reward moment. |
 | `components/Streak.jsx` | The flame, the number and the seven day marks |
 | `components/Task.jsx` | The category tile, points, the due time, the child's task card and the task row |
 | `components/Review.jsx` | The approval stamp, the note on a proof that was sent back, and the earlier attempts |
+| `components/Cheer.jsx` | A parent's cheer with an approval (an icon, words and the parent's own line), and the picker a parent adds one with |
+| `components/Quest.jsx` | The weekly quest as a slim ruler with a status line and, when there is one, its sealed surprise |
+| `components/GrowthPath.jsx` | The levels ahead as a line of tiles with the sticker each level earns, and the stickers the child is closest to |
+| `components/Request.jsx` | A reward request's tag and its asked-and-answered line, the same for the child and the parent |
+| `utils/cheers.js` | The six cheers: their words and icons |
 | `components/Proof.jsx` | One proof: the photo, video or file, and the note |
 | `components/Sticker.jsx` | Four shapes, three colours, the locked state and the empty slot of the chart |
 | `components/Shells.jsx` | The parent, child, moderator, public and sign-in shells, with navigation, the account menu and Sign out |
@@ -434,6 +462,8 @@ No looping animation and no entrance animation on page content.
 | `pages/` | Landing, Safety and privacy, Sign in, Sign up, Overview, Family, Child form, Tasks, Task form, Task detail (parent, with Approve and Send back), Progress (with the printed report), Settings, Today (with the reward moment), Task (child, with sending proof and trying again), Growth, Stickers, Report a problem, Reports (moderator), Not found |
 | `api/` | The API contract (`index.js`, `errors.js`) and its stand-in (`fake.js`, with proof files in `fakeFiles.js`). The award and progress rules are `scoring.js`, checked by `scoring.check.js`; `fake.check.js` checks what deleting a family removes and keeps (a report no moderator has answered stays, with no sender, and goes once it is answered) and what a moderator is handed; `clock.js` is the clock, which development can move with `?clock=<days>`. |
 | `hooks/`, `utils/` | Loading data and one-time notes; form rules, how times and sizes are written, the six categories, and the rule for which task is next. `utils/tasks.check.js` is the one runnable check of the task rules: `npm run check`. |
+| `pages/Rewards.jsx` | The child's reward shop: points to spend, what each reward costs or how far away it is, an in-place confirm to ask for one, and the requests so far with their answers |
+| `pages/ParentRewards.jsx` | The parent's side: requests to give or decline (with a note), the rewards with the one form that adds or changes them, and a weekly quest for each child |
 | `pages/DesignSheet.jsx` | A reference page showing the tokens and game pieces. It is at `/design` in development builds only. |
 
 Tailwind's default colour, type-size, radius, shadow and breakpoint scales are switched off in `index.css`, so a class such as `text-sm`, `rounded-xl` or `md:` does nothing. Use the tokens and type roles instead.
@@ -468,7 +498,7 @@ How the rewards apply it:
 - **It plays once, and only when it can be watched.** Everything approved since the last visit is gathered into the one sequence. A result counts as seen only after its sequence has run to the end, so leaving early or loading in a hidden tab does not use it up. A second approval during the same visit plays only what is new.
 - **A reward is given on Today first.** Until then Growth and Stickers show the score as the child has seen it, the task's own page says only that it was approved, and Today's navigation item carries a gold count.
 - **With reduced motion** the new level, ruler and stickers are simply there.
-- **The sticker chart is an album, not a locked shop.** An empty slot is the sticker's dashed outline and its name, with no padlock, no bar and no count towards it. The padlock appears only in a sticker's details, beside "Not earned yet".
+- **The sticker chart is an album, not a locked shop.** An empty slot is the sticker's dashed outline and its name, with no padlock and no bar. A sticker's details say how far along it is and show the padlock, beside "Not earned yet"; Growth lists the three a child is closest to.
 - **The streak is calm.** A flame, a number and seven day marks. A missed day turns grey and the number goes back to nought, with no message.
 
 How Progress and the report apply it:
@@ -482,7 +512,7 @@ How Progress and the report apply it:
 
 How the serious pages apply it:
 
-- **Settings is three plain sections** divided by a rule: name, password, deleting. No sidebar and no red box. The one red button in it is inside the dialog, on the act itself.
+- **Settings is four plain sections** divided by a rule: name, password, family leaderboard, deleting. No sidebar and no red box. The one red button in it is inside the dialog, on the act itself.
 - **Deleting the family's data is a dialog that lists exactly what goes** and asks for the password. The button that backs out says "Keep everything". The one thing deleting keeps is a report no moderator has answered yet, with no account and no link back; the dialog says so.
 - **Report a problem is one box.** No category to choose. It says who reads a report and that the family is not told, and what the moderator is and is not shown. Sending it turns the page into a confirmation that says what happens next, with no time promised, and a helpline number. Both screens look the same in the child's shell and the parent's, apart from size.
 - **The moderator's page is a work list.** Reports waiting, oldest first; one opens in place, shows the task it came from as a quoted block, and takes an answer. An answered report leaves the list.

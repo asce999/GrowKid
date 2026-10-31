@@ -1,6 +1,6 @@
 # GrowKid frontend sitemap
 
-**Status: final.** This is the frontend architecture to build from: which pages exist, their routes, how they connect and what is deliberately not a page. It replaces the earlier proposal of 27 pages on 29 routes (two of those pages optional) with **19 pages on 21 routes**. Product facts come from the project synopsis; look and behaviour come from `DESIGN.md`.
+**Status: final.** This is the frontend architecture to build from: which pages exist, their routes, how they connect and what is deliberately not a page. It replaces the earlier proposal of 27 pages on 29 routes (two of those pages optional) with **21 pages on 23 routes**. Product facts come from the project synopsis; look and behaviour come from `DESIGN.md`.
 
 **Where the frontend stands today.** All eleven steps of the implementation order (section 13) are built, so the frontend is complete: all 21 routes with their access rules and redirects, the four shells, the shared states, Sign in, Sign up, Family and the Child form, tasks on both sides with sending proof, review with Approve and Send back, Overview, the rewards (the reward moment on Today, the streak, Growth and Stickers), Progress with its printed report, Settings with deleting the family's data, Report a problem, the moderator's Reports, and the two public pages, Landing and Safety and privacy. All nineteen pages exist. A task can be To do, Overdue, In review, Sent back or Approved; "Due soon" waits for a rule saying how soon. The message after deleting a family's data is shown once, on Landing. Decisions D1 to D3 and the working assumptions marked accepted in section 12 are built on. The server still has no code and the Prisma schema has no models, so the client calls the functions in `client/src/api/`, which a stand-in (`api/fake.js`) answers in the browser: records in localStorage, proof files in IndexedDB. The award and progress rules are plain functions in `api/scoring.js`; `npm run check` runs them, and checks what deleting a family removes and keeps, and what a moderator is handed. React Router 7 and Zustand are in use; Axios is installed and waits for a real server.
 
@@ -22,19 +22,19 @@ Three questions were open in the proposal. They are settled here by recommendati
 |---|---|---|
 | Public | Landing; Safety and privacy | 2 |
 | Authentication | Sign in; Sign up | 2 |
-| Parent | Overview; Tasks; Task form (create and edit); Task detail (with proof review); Progress; Family; Child form (add and edit); Settings | 8 |
-| Child | Today; Task detail (with sending proof); Growth; Stickers | 4 |
+| Parent | Overview; Tasks; Task form (create and edit); Task detail (with proof review); Rewards (parent); Progress; Family; Child form (add and edit); Settings | 9 |
+| Child | Today; Task detail (with sending proof); Growth; Stickers; Rewards (child) | 5 |
 | Shared | Report a problem | 1 |
 | System | Not found | 1 |
 | Moderator (D3) | Reports | 1 |
-| | **Total** | **19** |
+| | **Total** | **21** |
 
 Build cost of each page:
 
 | Cost | Pages |
 |---|---|
-| High | Parent Task detail; Progress; Today; Child Task detail |
-| Medium | Landing; Overview; Tasks; Task form; Growth; Reports |
+| High | Parent Task detail; Progress; Today; Child Task detail; Rewards (parent) |
+| Medium | Landing; Overview; Tasks; Task form; Growth; Reports; Rewards (child) |
 | Low | Safety and privacy; Sign in; Sign up; Family; Child form; Settings; Stickers; Report a problem; Not found |
 
 ## 3. Route map
@@ -50,6 +50,7 @@ Build cost of each page:
 | `/parent/tasks/new` | Task form | Parent | Create a task and assign it to a child |
 | `/parent/tasks/:taskId` | Task detail | Parent | One task: details, status, every proof and note. Approve or send back happens here. |
 | `/parent/tasks/:taskId/edit` | Task form | Parent | Edit a task (the same form as create) |
+| `/parent/rewards` | Rewards | Parent | Requests waiting first, then the rewards, then each child's weekly quest |
 | `/parent/progress/:childId` | Progress | Parent | A child's level, streak, weekly completion and stickers; download the PDF report |
 | `/parent/family` | Family | Parent | The children in the family |
 | `/parent/family/new` | Child form | Parent | Add a child and set their sign-in details |
@@ -59,6 +60,7 @@ Build cost of each page:
 | `/child/tasks/:taskId` | Task detail | Child | What to do, when, what it is worth. Sending proof happens here. |
 | `/child/growth` | Growth | Child | Level, XP, points, streak and the history of what was earned |
 | `/child/stickers` | Stickers | Child | The sticker chart: earned stickers and empty slots |
+| `/child/rewards` | Rewards | Child | Points to spend, the rewards, and the child's requests with their answers |
 | `/report` | Report a problem | Any signed-in user | Report a task, a note or anything that feels wrong |
 | `/admin/reports` | Reports | Moderator | Reports waiting; open one to see the item and mark it resolved |
 | `*` | Not found | Anyone | Any address that does not exist or is not the user's to see |
@@ -82,7 +84,8 @@ Overview (/parent)
 ├─ a proof waiting ──► Task detail (review) ──► back to Overview
 ├─ Tasks ──┬──► Task form (create) ──► Tasks
 │          └──► Task detail ──► Task form (edit)
-├─ Progress ──► Download report
+├─ Rewards ──► answer requests, set rewards and weekly quests
+├─ Progress ──► Download report, rest days
 ├─ Family ──► Child form (add or edit)
 └─ account menu ──► Settings, Report a problem, Sign out
 
@@ -90,6 +93,7 @@ Today (/child)
 ├─ Task detail (send proof here)
 ├─ Growth
 ├─ Stickers
+├─ Rewards ──► ask for a reward
 └─ account menu ──► What parents can see, Report a problem, Sign out
 ```
 
@@ -150,6 +154,7 @@ Each step of both journeys, walked against the final routes.
 | Review proof, approve or send back | `/parent/tasks/:taskId` | Sending back needs a note. Afterwards the parent returns to Overview, where the next proof waiting is at the top. |
 | Reward and progress update | The confirmation, then Task detail | **Gap closed:** the confirmation names what was awarded, and Task detail keeps it beside the approval stamp. |
 | Review child progress | `/parent/progress/:childId` | |
+| Answer requests, set rewards and quests | `/parent/rewards` | Requests waiting come first, with a count on the Rewards item in the navigation. |
 | Manage family | `/parent/family`, Child form | |
 | Manage account | `/parent/settings` | |
 | Log out | Account menu, in the shell | One tap, from every parent page. Lands on Sign in. |
@@ -168,6 +173,7 @@ Each step of both journeys, walked against the final routes.
 | Gets the result | Today, on the next visit | Approved: the reward moment and what was earned. Sent back: the parent's note and "Try again". **Dependency:** the server must record which results the child has already seen. |
 | Several results at once | Today | One reward moment that sums them up, not one per task. |
 | Sees progress | `/child/growth`, `/child/stickers` | |
+| Spends points | `/child/rewards` | Asking holds the points until a parent answers. |
 | Is uneasy about a task | Task detail, then `/report` | The report arrives already linked to that task. |
 | Sign out | Account menu, in the shell | Lands on Sign in. |
 
@@ -175,7 +181,7 @@ Each step of both journeys, walked against the final routes.
 
 The parent side is the quiet volume: lists and tables, colour only in status, and reviewing proof as the most frequent job.
 
-Navigation, in this order: **Overview, Tasks, Progress, Family.** A sidebar on desktop and a bottom bar on phones. Overview carries the count of proofs waiting. The account menu holds Settings, Report a problem and Sign out.
+Navigation, in this order: **Overview, Tasks, Rewards, Progress, Family.** A sidebar on desktop and a bottom bar on phones. Overview carries the count of proofs waiting and Rewards the count of requests waiting. The account menu holds Settings, Report a problem and Sign out.
 
 | Page | Leads with | Also holds |
 |---|---|---|
@@ -183,7 +189,8 @@ Navigation, in this order: **Overview, Tasks, Progress, Family.** A sidebar on d
 | Tasks | The task list | Filters for child and status; Create task |
 | Task form | The fields in order: child, title, what to do, due, points | A preview of the child's task card on desktop |
 | Task detail | The task and its status. When proof is waiting: the proof, shown large, with Approve and Send back. | Every earlier proof and note; the approval stamp and what was awarded; Edit and Delete |
-| Progress | The child's level and growth ruler | Weekly completion chart, streak calendar, stickers, Download report |
+| Rewards | Requests waiting | The rewards; each child's weekly quest |
+| Progress | The child's level and growth ruler | Weekly completion chart, streak calendar with the rest days (set in the Streak section), stickers, Download report |
 | Family | The children | Add a child |
 | Child form | Name and sign-in details | Reset password; Remove child |
 | Settings | Name | Change password; delete the family's data |
@@ -194,14 +201,15 @@ With more than one child, Progress has a child switcher, and Overview and Tasks 
 
 The child side is the louder volume: one job per screen, the navy growth band, and the next task first.
 
-Navigation: **Today, Growth, Stickers.** A bottom bar on phones and a top bar on desktop. The account menu holds What parents can see, Report a problem and Sign out. The child has no settings: the parent manages the account.
+Navigation: **Today, Growth, Stickers, Rewards.** A bottom bar on phones and a top bar on desktop. The account menu holds What parents can see, Report a problem and Sign out. The child has no settings: the parent manages the account.
 
 | Page | Leads with | Also holds |
 |---|---|---|
-| Today | The one next task, with its main button | The growth band (level, ruler, streak); other tasks to do; tasks in review; results since the last visit |
+| Today | The one next task, with its main button | The growth band (level, ruler, streak); other tasks to do; tasks in review; results since the last visit; this week's quest; the streak reminder; choosing the next task |
 | Task detail | What to do, and the Send proof button | Due time, points, status; the parent's note if it was sent back; the proof already sent; the approval stamp |
-| Growth | The growth ruler | Points, streak with the week's day marks, best streak, the list of what was earned and why |
+| Growth | The growth ruler | Points, streak with the week's day marks, best streak, the list of what was earned and why, the growth path, the next stickers, and the family leaderboard when a parent turns it on |
 | Stickers | The sticker chart | Opening a sticker shows its name, how it was earned and when |
+| Rewards | Points to spend | The rewards, and the child's requests with their answers |
 
 The reward moment plays on Today when a result has arrived. It is a state of that page.
 
@@ -283,6 +291,14 @@ Child: Task detail                              Parent: Overview (count goes up)
 
 Every attempt is kept: Task detail shows each proof and note in order, to both parent and child. A failed upload keeps the chosen file and offers Try again.
 
+**Rewards**
+
+```
+Child:  Rewards ──► asks for a reward ──► points held ──► Waiting for a parent
+Parent: Rewards (count goes up) ──┬─► Give ──► Given
+                                  └─► Decline, note optional ──► Not this time; the points come back
+```
+
 **Safety and reporting**
 
 ```
@@ -317,12 +333,14 @@ Only Not found is a route. Everything else is a state of a page or of the shell.
 | Tasks | No tasks; nothing matches the filter | Load failed |
 | Task form | No children: "Add a child first" | Field errors; screening refused it; save failed and the input is kept |
 | Task detail (parent) | | One layout per status. Proof would not load; already reviewed in another tab; deleted or not theirs: Not found |
+| Rewards (parent) | "No rewards yet" and "No requests waiting" | Load failed; answered in another tab |
 | Progress | No approved tasks yet | Load failed; report being prepared; report failed |
 | Family | No children yet | Load failed |
 | Today | Nothing to do right now; everything done for today | Load failed; no network |
 | Task detail (child) | | One layout per status. Proof: choosing, preview, uploading with progress, too large or wrong type, upload failed, sent |
 | Growth | Level 1 with an empty ruler is the empty state | Load failed |
 | Stickers | The chart of empty slots is the empty state | Load failed |
+| Rewards (child) | "No rewards yet" | Load failed; asking failed and nothing was held |
 | Report a problem | | Sending; send failed and the text is kept; sent |
 | Reports | No reports waiting | Load failed |
 
@@ -350,7 +368,7 @@ Where the structure changes, not just the layout.
 
 | Page | Phone | Desktop |
 |---|---|---|
-| Navigation | Bottom bar: four items for the parent, three for the child | Parent sidebar; child top bar |
+| Navigation | Bottom bar: five items for the parent, four for the child | Parent sidebar; child top bar |
 | Overview | Proofs waiting, then tasks; progress is a link | Progress summary alongside |
 | Tasks | Stacked rows; one filter control | A table with columns and filters |
 | Task form | One column | The form beside a preview of the child's task card |
@@ -369,8 +387,8 @@ The screens depend on these. Each has a working assumption so that building can 
 1. **Late proof.** Accepted on 9 October 2026: a child can still send proof after the deadline; the task shows as Overdue. Once the proof is sent the task shows as In review, and the proof is marked as sent late, to the child and to the parent.
 2. **Editing and deleting.** Accepted on 9 October 2026: a task can be edited until its first proof is sent and deleted until it is approved. Approved tasks stay as history. The due time must be in the future when a task is created or when its due time is changed, so an overdue task can still have its other fields edited; and deleting a task deletes its proofs. Accepted on 9 October 2026: a task that was sent back has had a proof sent, so it stays closed to editing and can still be deleted. If the task itself was wrong, the parent says so in the note, or deletes it and sets another.
 3. **Scoring rules.** The synopsis names a rule-based engine and gives no numbers. Accepted on 9 October 2026: a task is worth 5 to 100 points in steps of 5, chosen by the parent (20 unless changed). Approving its proof awards those points, and one XP for each point. Every level takes 100 XP, so the level is 1 plus the XP earned divided by 100, rounded down. Today also shows the XP of proofs still waiting for approval, which is the points of the tasks in review. The synopsis also gives no rule for streaks or badges; the two below were accepted on 10 October 2026.
-   - **Streak.** A day counts when proof the child sent that day is approved, whenever the parent gets to it: the day is the day it was sent, so a parent who approves late breaks nothing. A day is missed when a task was due on it and the child had sent no proof for that task by the end of the day, unless the child sent any proof at all that day, whatever later happens to it: waiting, approved or sent back. A parent's answer therefore never turns a day into a missed one. Every other day, one with nothing due included, changes nothing. The streak is the number of days that count since the last missed day, and the best is kept. Only the child's own actions move it. A day is a calendar day in the family's local time. One point stays open for the backend phase: what happens to a missed day when a parent deletes an overdue task or moves its due time.
-   - **Stickers.** Eleven, each earned once and never lost. Task counts (seal): First task, 10 tasks, 25 tasks approved. Streaks (shield): a streak of 3, 7 and 30 days. Levels (hexagon): level 2, 5 and 10. Skills (star): All six kinds, for an approved task in each category; Right first time, for 5 tasks approved on the first try. An award is recorded when the approval that earns it is given, and belongs to that approval.
+   - **Streak.** A day counts when proof the child sent that day is approved, whenever the parent gets to it: the day is the day it was sent, so a parent who approves late breaks nothing. A day is missed when a task was due on it and the child had sent no proof for that task by the end of the day, unless the child sent any proof at all that day, whatever later happens to it: waiting, approved or sent back. A parent's answer therefore never turns a day into a missed one. Every other day, one with nothing due included, changes nothing. The streak is the number of days that count since the last missed day, and the best is kept. Only the child's own actions move it. A day is a calendar day in the family's local time. One point stays open for the backend phase: what happens to a missed day when a parent deletes an overdue task or moves its due time. Rest days are one answer for a family that knows a day will be missed.
+   - **Stickers.** Fourteen, each earned once and never lost. Task counts (seal): First task, 10 tasks, 25 tasks, 50 tasks approved. Streaks (shield): a streak of 3, 7 and 30 days. Levels (hexagon): level 2, 5 and 10. Skills (star): All six kinds, for an approved task in each category; Right first time, for 5 tasks approved on the first try. Weekly quests (star): First quest, for the first weekly quest completed; 4 quests, for four completed. An award is recorded when the approval that earns it is given, and belongs to that approval.
 4. **Seen results.** The server records which review results the child has seen, so Today can show what is new. Accepted on 9 October 2026: each task carries whether its newest result has been seen. Today shows an approval as new once, on its band, and then tells the server which tasks it showed, so a result that arrives meanwhile is still new. An approved task then leaves Today (Growth will list it). A sent-back task stays on Today until new proof is sent, seen or not.
 5. **Proof files.** Allowed types and the size limit, especially for video, which is costly on free storage. Accepted on 9 October 2026: one proof is one file, a note, or both. The file is a photo (JPEG, PNG or WebP), a video (MP4, WebM or QuickTime) or a PDF, of at most 25 MB. A note is at most 500 characters.
 6. **PDF report.** Assumed: the server builds it, so the frontend needs only a Download report button. Until there is a server, Download report asks for the child's progress again and opens the browser's print window on Progress, which is styled for paper; "Save as PDF" there keeps a copy. That printed page is what the server later turns into a PDF.
@@ -380,9 +398,9 @@ The screens depend on these. Each has a working assumption so that building can 
 10. **Review.** Accepted on 9 October 2026: only the newest proof of a task in review can be answered, and only once. A second answer, from another tab, a second press or a slow connection, is refused as already reviewed and awards nothing. Sending back needs a note of at most 300 characters. The reviewer's name and the time stay with the proof and are shown to the child. An approval cannot be taken back.
 11. **Categories.** Accepted on 9 October 2026: every task has exactly one of the six categories in DESIGN.md section 8, chosen by the parent. The field is required.
 12. **Overview's week.** Accepted on 9 October 2026: the week runs from Monday to Sunday. "This week" lists tasks due in it and older ones still open, and leaves out the ones waiting for review, which are listed above it.
-13. **What the child has been shown.** Accepted on 10 October 2026: a reward is given on Today first. The server therefore answers with two scores, the real one and the one the child has last seen, and the reward moment plays from the second to the first. A result counts as seen only when Today reports it, which it does after the moment has run to its end. Until then Growth and Stickers show the seen score, and the parent's pages show the real one.
+13. **What the child has been shown.** Accepted on 10 October 2026: a reward is given on Today first. The server therefore answers with two scores, the real one and the one the child has last seen, and the reward moment plays from the second to the first. A result counts as seen only when Today reports it, which it does after the moment has run to its end. Until then Growth and Stickers show the seen score, and the parent's pages show the real one. Cheers are shown with each approval in the moment. A weekly quest completed by an approval lands after that approval's stickers.
 
-14. **Progress.** Accepted on 10 October 2026: progress is worked out from the child's tasks when asked and never stored. The weekly chart counts the tasks approved in each of the last six weeks, Monday to Sunday, with the XP they earned; a task belongs to the week its approved proof was sent in, as a day does in the streak, so a parent who approves on Monday what was sent on Sunday moves nothing. The calendar shows the streak's day marks for this week and the three before it. The counts are tasks approved, proofs waiting, and tasks still to do with how many are overdue. The parent sees the real score, which the child sees once Today has shown it (rule 13). Everything on the page is the child's own record, which the child can see on Growth, Stickers and Today, with one difference of range: Growth shows the last seven day marks, Progress four weeks of them.
+14. **Progress.** Accepted on 10 October 2026: progress is worked out from the child's tasks when asked and never stored. The weekly chart counts the tasks approved in each of the last six weeks, Monday to Sunday, with the XP they earned; a task belongs to the week its approved proof was sent in, as a day does in the streak, so a parent who approves on Monday what was sent on Sunday moves nothing. The calendar shows the streak's day marks for this week and the three before it. The counts are tasks approved, proofs waiting, and tasks still to do with how many are overdue. The parent sees the real score, which the child sees once Today has shown it (rule 13). Everything on the page is the child's own record, which the child can see on Growth, Stickers and Today, with one difference of range: Growth shows the last seven day marks, Progress four weeks of them. The calendar shows rest days.
 15. **Reports and the moderator.** Accepted on 10 October 2026.
     - **What a report holds.** The sender's own words (up to 1,000 characters), whether they are a parent or a child, and the time. If it was sent from a task's page, also a copy of that task made at that moment: its title, instructions, due time and points, the notes a parent sent proof back with, and how many times proof had been sent. The copy is kept so that editing or deleting the task afterwards cannot change what was reported.
     - **What a moderator sees:** exactly that, and nothing else. Never a name, an email or a username; never a proof photo, video or file; never a note the child wrote with their proof; never any other task, score or person in the family. A moderator cannot open any family page.
@@ -390,9 +408,17 @@ The screens depend on these. Each has a working assumption so that building can 
     - **Resolved** means the moderator has written an answer (required, up to 500 characters). The report leaves the moderator's list and the answer appears to the sender. It changes nothing else: no task, proof, score or account is touched, nobody else is told, and it cannot be reopened or answered twice. A moderator has no other power in this version.
     - **How soon.** No time is promised. The page says only that a moderator reads every report, because a time is a promise a person would have to keep. Add one only when someone is there to keep it.
     - **Not settled:** a report about something that needs more than an answer (a harmful task, a worrying photo) can only be answered, and the page gives a helpline number. Whether a moderator should be able to see a proof file, remove a task or reach a family is a decision for the backend phase.
-16. **The parent's account, and deleting.** Accepted on 10 October 2026: a parent can change their name and, by typing the current one, their password (8 characters or more). The email cannot be changed. An earlier approval or note keeps the name it was given under. Deleting the family's data asks for the password and removes the parent's account, every child's sign-in, every task and proof with its file, every score and sticker, and every report the moderator has answered; the parent is signed out and no copy is kept, which the server must honour in its backups too. Removing one child removes the same things for that child.
+16. **The parent's account, and deleting.** Accepted on 10 October 2026: a parent can change their name and, by typing the current one, their password (8 characters or more). The email cannot be changed. An earlier approval or note keeps the name it was given under. Deleting the family's data asks for the password and removes the parent's account, every child's sign-in, every task and proof with its file, every score and sticker, and every report the moderator has answered; the parent is signed out and no copy is kept, which the server must honour in its backups too. Removing one child removes the same things for that child. Deleting also removes the family's rewards and requests, and each child's quests, quest awards and rest days.
     - **A report nobody has answered survives.** A report the moderator has not answered is kept when its sender or the sender's family is deleted, so that a parent cannot make a child's report disappear by removing the child or the family. It stays in the moderator's list as before, and holds nothing that points back to the family: no user id, no family id, no task id. It keeps the sender's words, whether a parent or a child sent it, the time, and the copy of the task (rule 15). The task copy is the parent's own words, so a name written into a task stays in it; the pages therefore say "no account and no link to the family", never "no name". When the moderator answers it, it is deleted, because nobody is left to read the answer.
     - **Safety and privacy says so.** Both dialogs that list what deleting removes say that a report not yet answered is kept without the family's name, and Safety and privacy says it in the same words.
+17. **Balance.** Accepted on 30 October 2026: points stay every point a child has ever earned, and XP is unchanged. A new number, the balance, is what can be spent, and spending never lowers points, XP or level. The balance is the points, plus the bonus of every weekly quest completed, minus the cost of every request that is waiting or given. The child's balance is worked out from the score the child has been shown (rule 13), so an approval or a quest the child has not yet seen on Today does not count yet; the parent's pages use the real one. A request needs a shown balance of at least its cost, and is refused as not enough points otherwise.
+18. **Rewards and requests.** Accepted on 30 October 2026: a parent sets rewards for the family. A reward's title is 3 to 60 characters once trimmed and is checked against the same word list as a task (rule 8); the refusal names the word. Its cost is a whole number of points from 10 to 1,000, in steps of 10. A child can ask only for a reward their own parent set; any other is not found. A request holds its points at once, and declining gives them back. A request is answered once, as given or as declined; a second answer is refused as already reviewed. A parent can add a note of at most 200 characters when declining. A declined request is shown to the child as "Not this time", in a neutral tag and never in coral, because declining is not something the child has to fix.
+19. **Weekly quest.** Accepted on 30 October 2026: a parent can set one quest for each child: a number of tasks to have approved in a week, a bonus, and optionally a sealed surprise. The week runs Monday to Sunday, and a task counts toward the week its approved proof was sent in, the same rule as Progress (rule 14). The quest that applies is the one in place when the task is approved. A quest is completed once a week, and its bonus is points to spend (rule 17), not XP. The award is a copy, so later changes to the quest do not change it. The target is a whole number from 2 to 20, and the bonus a whole number from 10 to 200 in steps of 5. The surprise is the parent's own words, at most 80 characters once trimmed and checked against the same word list as a task (rule 8); an empty one means no surprise. The child sees only that a surprise is sealed, and what unlocks it, until the quest is complete and has been shown to the child (rule 13). It is the one thing a child cannot see, and it is about a reward, not about the child. Accepted on 31 October 2026: a quest changed after that week's was completed opens nothing early, because the child reads the completed week from its award; and the award reaches the child's device with its surprise before Today plays it, as the real score does (rule 13). Also accepted on 31 October 2026: a surprise opens once, so completing the quest empties it from the quest, and next week's quest has none unless the parent writes a new one; and a target at or below the tasks already approved this week is refused, unless that week's quest is already complete, because a quest completes only on an approval and would otherwise show as full and never pay.
+20. **Cheers.** Accepted on 30 October 2026: when approving a proof, a parent can add a cheer: one of six fixed kinds (proud, tidy, brave, clever, kind or effort), or none, and an optional line of at most 120 characters once trimmed. A cheer is shown with the approval stamp everywhere the stamp appears, except on Landing.
+21. **Rest days.** Accepted on 30 October 2026: only a parent sets a rest day, for one child at a time. A day is a local calendar day, written YYYY-MM-DD, and a rest day can be set from 7 days ago up to 90 days ahead, both included; any other day is refused. The controls are on the parent's Progress page, in the Streak section. A rest day is never missed. It is shown as a rest day, and proof approved on it still counts. Accepted on 31 October 2026: the day must be a real calendar date; the parent's list shows days from 7 days ago onward, and older rest days stay stored and still protect the streak.
+22. **The chosen next task.** Accepted on 30 October 2026: only the child chooses which task to do next, and only one at a time. The task must be the child's own and still open, meaning to do or sent back; a task that is not theirs is not found, and a task that is not open is refused. Today leads with the chosen task for as long as it is open. The choice clears when proof is sent for that task or the task is deleted. A parent can see which task is chosen: nothing about the child is hidden from the parent.
+23. **Family leaderboard.** Accepted on 30 October 2026: a parent can turn it on, and it is off until then. It appears only on the child's Growth page, and only when the family has two or more children. Each entry is only a child's first name and the number of tasks approved this week (Monday to Sunday, by the week the proof was sent in, as in rule 14), counting only approvals that child has been shown (rule 13). The list is sorted by tasks, most first, then by name. Accepted on 31 October 2026: the name is shown exactly as the parent typed it, with nothing cut from it, so a parent who types a full name shows a full name.
+24. **Streak reminder.** Accepted on 30 October 2026: Today's band shows a reminder only when all four hold: a task is due today, that task is still open, the child has sent no proof today, and today is not a rest day. It is worded as fact, never as guilt.
 
 ## 13. Implementation order
 
@@ -428,4 +454,5 @@ Do not add these without changing this document first.
 | Safety settings, notification preferences | Nothing in the backend behind them |
 | 401, 403, 500, 503 pages | Redirects and in-page states |
 | Admin dashboard, user management | D3 |
-| Leaderboards, second parent account | Not in the synopsis for this version |
+| Second parent account | Not in the synopsis for this version |
+| Leaderboards beyond the family | Rule 23 keeps ranking inside the family |
