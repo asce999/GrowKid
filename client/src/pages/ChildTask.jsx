@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Camera, FileText, PenLine, Upload } from 'lucide-react'
 import * as api from '../api/index.js'
+import { Cheer } from '../components/Cheer.jsx'
 import { Field } from '../components/Field.jsx'
 import Proof from '../components/Proof.jsx'
 import { Earlier, Note, SentLine, Stamp } from '../components/Review.jsx'
@@ -221,6 +222,7 @@ function Outcome({ task, justNow }) {
       {task.status === 'approved' && (
         <>
           <Stamp review={proof.review} />
+          <Cheer cheer={proof.review.cheer} className="mt-2" />
           <p className="mt-2 flex flex-wrap items-center gap-x-2">
             You earned <Points value={task.points} /> for this task.
           </p>

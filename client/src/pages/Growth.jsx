@@ -1,5 +1,7 @@
 import { Link } from 'react-router-dom'
+import { Gift } from 'lucide-react'
 import * as api from '../api/index.js'
+import { GrowthPath, NextStickers } from '../components/GrowthPath.jsx'
 import GrowthRuler from '../components/GrowthRuler.jsx'
 import { Gain } from '../components/Review.jsx'
 import { EmptyState, ErrorState, Message, PageLoading } from '../components/states.jsx'
@@ -11,22 +13,30 @@ import { whenText } from '../utils/format.js'
 import { STICKER_ICONS, isEarned } from '../utils/stickers.js'
 import { lastReview } from '../utils/tasks.js'
 
-// Everything the child has earned, and why: the ruler, the streak, and a plain history. No
+const weekStart = new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'long' })
+
+// Everything the child has earned, and why: the ruler, the streak, the road ahead, the stickers
+// closest to being earned, the family's week if a parent turned it on, and a plain history. No
 // charts: those are the parent's. A reward is given on Today first, so this page shows the
 // score as the child has seen it and says when something new is waiting there.
 
 export default function Growth() {
-  const loaded = useLoad(() => Promise.all([api.getGrowth(), api.listTasks(), api.listStickers()]), [], { live: true })
+  const loaded = useLoad(
+    () => Promise.all([api.getGrowth(), api.listTasks(), api.listStickers(), api.getLeaderboard()]),
+    [],
+    { live: true },
+  )
 
   if (loaded.status === 'loading') return <PageLoading rows={4} />
   if (loaded.status === 'error') return <ErrorState error={loaded.error} onRetry={loaded.reload} />
-  const [growth, tasks, stickers] = loaded.data
+  const [growth, tasks, stickers, board] = loaded.data
   const shown = growth.shown
-  // newest first; a sticker sits just above the approval that earned it
+  // newest first; a sticker or a quest sits just above the approval that earned it
   const history = [
     ...tasks.filter((task) => task.status === 'approved' && task.resultSeen).map((task) => ({ at: lastReview(task).at, task })),
     ...stickers.filter(isEarned).map((sticker) => ({ at: sticker.earnedAt, sticker })),
-  ].sort((a, b) => b.at.localeCompare(a.at) || (a.sticker ? 0 : 1) - (b.sticker ? 0 : 1))
+    ...growth.questAwards.filter((a) => a.seen).map((award) => ({ at: award.earnedAt, award })),
+  ].sort((a, b) => b.at.localeCompare(a.at) || (a.task ? 1 : 0) - (b.task ? 1 : 0))
 
   return (
     <>
@@ -49,6 +59,32 @@ export default function Growth() {
         </Message>
       )}
 
+      <h2 className="type-display mt-6 text-navy-800 sm:mt-8">The road ahead</h2>
+      <GrowthPath level={shown.level} xpForNext={shown.xpForNext} stickers={stickers} />
+
+      <NextStickers stickers={stickers} />
+
+      {board && (
+        <>
+          <h2 className="type-subheading mt-10">This week in your family</h2>
+          <p className="type-small muted mt-1">Tasks approved since Monday. It starts again every Monday.</p>
+          <ol className="mt-3 overflow-hidden rounded-card border bg-white">
+            {board.map((entry, i) => (
+              <li key={i} className={`flex items-center gap-3 border-b px-4 py-3 last:border-b-0 sm:px-6 ${entry.you ? 'font-semibold' : ''}`}>
+                <span className="type-game w-6 shrink-0 text-center">{i + 1}</span>
+                <span className="min-w-0 flex-1 break-words">
+                  {entry.name}
+                  {entry.you && ' (you)'}
+                </span>
+                <span className="shrink-0">
+                  {entry.tasks} {entry.tasks === 1 ? 'task' : 'tasks'}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </>
+      )}
+
       <h2 className="type-display mt-6 text-navy-800 sm:mt-8">What you earned</h2>
       {history.length === 0 ? (
         <div className="mt-4">
@@ -59,16 +95,33 @@ export default function Growth() {
       ) : (
         <>
           <p className="mt-2 flex flex-wrap items-center gap-x-2">
-            <Points value={shown.points} /> earned so far, from {history.filter((entry) => entry.task).length} tasks.
+            <Points value={shown.points} /> earned so far, from {history.filter((entry) => entry.task).length} tasks.{' '}
+            <Points value={shown.balance} /> to spend.{' '}
+            <Link to="/child/rewards" className="inline-flex min-h-11 items-center font-semibold underline underline-offset-4">
+              Rewards
+            </Link>
           </p>
           <ul className="mt-4 overflow-hidden rounded-card border bg-white">
-            {history.map(({ at, task, sticker }) =>
+            {history.map(({ at, task, sticker, award }) =>
               task ? (
                 <li key={task.id} className="border-b last:border-b-0">
                   <Link to={`/child/tasks/${task.id}`} className="task-row">
                     <CategoryTile task={task} small />
                     <Gain task={task} />
                   </Link>
+                </li>
+              ) : award ? (
+                <li key={award.week} className="flex items-center gap-3 border-b px-4 py-3 last:border-b-0 sm:px-6">
+                  <span className="grid size-10 shrink-0 place-items-center rounded-tag bg-navy-100 text-navy-800">
+                    <Gift className="size-5" aria-hidden="true" />
+                  </span>
+                  <span className="grid min-w-0 flex-1 gap-0.5">
+                    <span className="font-medium">Weekly quest complete: +{award.bonus} points</span>
+                    <span className="type-small muted break-words">
+                      For the week starting {weekStart.format(new Date(`${award.week}T00:00`))}.
+                      {award.surprise ? ` Surprise: ${award.surprise}.` : ''}
+                    </span>
+                  </span>
                 </li>
               ) : (
                 <li key={sticker.id} className="flex items-center gap-3 border-b px-4 py-3 last:border-b-0 sm:px-6">

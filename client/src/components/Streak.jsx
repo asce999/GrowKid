@@ -6,7 +6,8 @@ const weekday = new Intl.DateTimeFormat('en-IN', { weekday: 'long' })
 
 /**
  * The streak: the flame, the number and the last seven days, today last. It is calm: a missed
- * day ends it quietly and the best is kept. No countdown and no warning (DESIGN.md section 10).
+ * day ends it quietly and the best is kept; a rest day a parent set changes nothing and is never
+ * missed. No countdown and no warning (DESIGN.md section 10).
  */
 export default function Streak({ streak, best = false }) {
   return (

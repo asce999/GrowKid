@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { CircleAlert, CircleCheck, Info, TriangleAlert, WifiOff } from 'lucide-react'
 import { pretendingOffline } from '../api/index.js'
 import { errorText } from '../utils/messages.js'
@@ -20,6 +20,20 @@ export function Message({ tone = 'info', alert = false, className = '', children
       <Icon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
       <div className="min-w-0">{children}</div>
     </div>
+  )
+}
+
+/** What just happened, as { tone, text }. It takes focus when it appears: the button that caused it has gone. */
+export function Result({ result, className = 'mt-4' }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    if (result) ref.current?.focus()
+  }, [result])
+  if (!result) return null
+  return (
+    <Message ref={ref} tabIndex={-1} tone={result.tone} alert={result.tone === 'danger'} className={className}>
+      {result.text}
+    </Message>
   )
 }
 

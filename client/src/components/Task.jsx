@@ -99,11 +99,15 @@ export function TaskCard({ task, children }) {
   )
 }
 
-/** A task as one row of a list: title, then status and due time. who names the child, for a parent. */
-export function TaskRow({ task, to, who }) {
+/**
+ * A task as one row of a list: title, then status and due time. who names the child, for a
+ * parent. action is one control that sits beside the link, not inside it (a link cannot hold a button).
+ */
+export function TaskRow({ task, to, who, action }) {
   return (
-    <li className="border-b last:border-b-0">
-      <Link to={to} className="task-row">
+    <li className="flex flex-wrap items-center border-b last:border-b-0 sm:flex-nowrap">
+      {/* on a phone the action takes its own line, so the title keeps its width */}
+      <Link to={to} className="task-row min-w-0 flex-1 max-sm:basis-full">
         <CategoryTile task={task} small />
         <span className="grid min-w-0 flex-1 gap-1">
           <span className="line-clamp-2 font-medium break-words">{task.title}</span>
@@ -111,11 +115,17 @@ export function TaskRow({ task, to, who }) {
             <StatusTag status={statusOf(task)} />
             <Due task={task} className="muted" />
           </span>
-          {who && <span className="type-small muted">For {who}</span>}
+          {who && (
+            <span className="type-small muted">
+              For {who}
+              {task.pinned && ', who chose it to do next'}
+            </span>
+          )}
         </span>
         <Points value={task.points} short />
         <ChevronRight className="size-5 shrink-0 text-navy-600 max-sm:hidden" aria-hidden="true" />
       </Link>
+      {action && <div className="ml-auto shrink-0 pr-2 sm:pr-4">{action}</div>}
     </li>
   )
 }

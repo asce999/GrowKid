@@ -5,10 +5,10 @@ import { ErrorState, PageLoading } from '../components/states.jsx'
 import Sticker from '../components/Sticker.jsx'
 import { useLoad } from '../hooks/useLoad.js'
 import { whenText } from '../utils/format.js'
-import { STICKER_ICONS, isEarned, tiltOf } from '../utils/stickers.js'
+import { MEASURE_WORDS, STICKER_ICONS, isEarned, tiltOf } from '../utils/stickers.js'
 
 // The sticker chart: every sticker there is, earned ones in colour and the rest as dashed,
-// named slots. Slots show what is possible and nothing more: no bar creeping towards one.
+// named slots. Slots show what is possible, and the details say how far along each one is.
 // A sticker's details open beside the chart on a wide screen, and in a sheet on a phone.
 
 /** One sticker in full: what it is, what earns it, and when it was earned. */
@@ -24,10 +24,17 @@ function Details({ sticker }) {
           Earned <time dateTime={sticker.earnedAt}>{whenText(sticker.earnedAt)}</time>, when “{sticker.taskTitle}” was approved.
         </p>
       ) : (
-        <p className="type-small muted flex items-center gap-1.5">
-          <Lock className="size-4 shrink-0" aria-hidden="true" />
-          Not earned yet
-        </p>
+        <>
+          {sticker.have !== undefined && (
+            <p className="type-small">
+              {sticker.have} of {sticker.need} {MEASURE_WORDS[sticker.measure]}
+            </p>
+          )}
+          <p className="type-small muted flex items-center gap-1.5">
+            <Lock className="size-4 shrink-0" aria-hidden="true" />
+            Not earned yet
+          </p>
+        </>
       )}
     </div>
   )

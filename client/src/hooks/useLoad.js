@@ -54,10 +54,13 @@ export function useLoad(load, deps = [], { live = false } = {}) {
   return {
     ...state,
     reload: () => setAttempt((n) => n + 1),
-    /** Puts an answer the server has just given in place of what was loaded. */
+    /**
+     * Puts an answer the server has just given in place of what was loaded. Pass a function to
+     * change part of it: it gets what is there by then, not what was there when the request left.
+     */
     set: (data) => {
       turn.current++
-      setState({ status: 'ready', data })
+      setState((was) => ({ status: 'ready', data: typeof data === 'function' ? data(was.data) : data }))
     },
   }
 }

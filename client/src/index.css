@@ -888,7 +888,7 @@
     animation: land var(--duration-reward) var(--ease-land) both;
   }
 
-  /* The streak's day marks: gold for a day that counted, dashed for one that changed nothing, grey for one missed. */
+  /* The streak's day marks: gold for a day that counted, dashed for one that changed nothing, grey for one missed, and an outline for a rest day a parent set (never missed). */
   .day-mark {
     @apply type-small grid size-7 place-items-center rounded-tag font-semibold;
   }
@@ -906,6 +906,42 @@
   }
   .on-navy .day-missed {
     @apply bg-navy-600 text-navy-200;
+  }
+  .day-rest {
+    @apply border-2 border-navy-800 bg-white text-navy-800;
+  }
+  .on-navy .day-rest {
+    @apply border-navy-200 bg-navy-950 text-navy-200;
+  }
+
+  /* The weekly quest's ruler: the growth ruler, a little slimmer. It sits after .ruler so its height wins. */
+  .quest-ruler {
+    height: 1rem;
+  }
+
+  /* The growth path: the levels ahead as a line of tiles, dashed until reached. */
+  .path-step {
+    @apply relative flex items-start gap-4 pb-6;
+  }
+  .path-step:last-child {
+    padding-bottom: 0;
+  }
+  .path-step::before {
+    content: "";
+    position: absolute;
+    left: calc(1.25rem - 1px);
+    top: 2.5rem;
+    bottom: 0;
+    border-left: 2px dashed var(--color-navy-400);
+  }
+  .path-step:last-child::before {
+    content: none;
+  }
+  .path-level {
+    @apply type-game grid size-10 shrink-0 place-items-center rounded-tag border-2 border-dashed border-navy-400 text-navy-800;
+  }
+  .path-here .path-level {
+    @apply border-solid border-navy-800 bg-navy-800 text-white;
   }
 
   /* A slot on the sticker chart: the sticker or its dashed outline, and its name. */
