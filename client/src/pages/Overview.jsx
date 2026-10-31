@@ -8,8 +8,8 @@ import { useOnce } from '../hooks/useOnce.js'
 import { initialOf, whenText } from '../utils/format.js'
 import { inThisWeek } from '../utils/tasks.js'
 
-// The parent's home. It opens on what needs the parent now: proofs waiting, oldest first. Then
-// the week's tasks, then each child's progress in a line. Not a dashboard: nothing here is a
+// The parent's home. It opens on what needs the parent now: proofs waiting, oldest first, and a
+// link when reward requests are waiting too. Then the week's tasks, then each child's progress in a line. Not a dashboard: nothing here is a
 // number for its own sake, and every figure comes from the tasks themselves.
 
 const sentAt = (task) => task.proofs.at(-1).sentAt
@@ -17,8 +17,13 @@ const sentAt = (task) => task.proofs.at(-1).sentAt
 export default function Overview() {
   const loaded = useLoad(
     async () => {
-      const [family, tasks, growth] = await Promise.all([api.listChildren(), api.listTasks(), api.listGrowth()])
-      return { family, tasks, growth }
+      const [family, tasks, growth, requests] = await Promise.all([
+        api.listChildren(),
+        api.listTasks(),
+        api.listGrowth(),
+        api.countRequestsWaiting(),
+      ])
+      return { family, tasks, growth, requests }
     },
     [],
     { live: true },
@@ -27,7 +32,7 @@ export default function Overview() {
 
   if (loaded.status === 'loading') return <PageLoading rows={3} />
   if (loaded.status === 'error') return <ErrorState error={loaded.error} onRetry={loaded.reload} />
-  const { family, tasks, growth } = loaded.data
+  const { family, tasks, growth, requests } = loaded.data
   const waiting = tasks.filter((task) => task.status === 'review').sort((a, b) => sentAt(a).localeCompare(sentAt(b)))
   const week = tasks.filter((task) => task.status !== 'review' && inThisWeek(task))
 
@@ -83,6 +88,13 @@ export default function Overview() {
                   ? '1 proof is waiting for review.'
                   : `${waiting.length} proofs are waiting for review.`}
             </p>
+            {requests > 0 && (
+              <p className="mt-2">
+                <Link to="/parent/rewards" className="font-medium text-navy-800 underline underline-offset-4">
+                  {requests === 1 ? '1 reward request is waiting.' : `${requests} reward requests are waiting.`}
+                </Link>
+              </p>
+            )}
             {waiting.length > 0 && (
               <ul className="mt-4 overflow-hidden rounded-card border bg-white">
                 {waiting.map((task) => (

@@ -11,7 +11,9 @@ import Overview from './pages/Overview.jsx'
 import Privacy from './pages/Privacy.jsx'
 import Progress from './pages/Progress.jsx'
 import Report from './pages/Report.jsx'
+import ParentRewards from './pages/ParentRewards.jsx'
 import Reports from './pages/Reports.jsx'
+import Rewards from './pages/Rewards.jsx'
 import Settings from './pages/Settings.jsx'
 import SignIn from './pages/SignIn.jsx'
 import SignUp from './pages/SignUp.jsx'
@@ -21,7 +23,7 @@ import TaskForm from './pages/TaskForm.jsx'
 import Tasks from './pages/Tasks.jsx'
 import Today from './pages/Today.jsx'
 
-// All 21 routes of Documentation/FRONTEND-SITEMAP.md section 3.
+// All 23 routes of Documentation/FRONTEND-SITEMAP.md section 3.
 
 const alone = (path, shell, page) => ({ path, element: shell, children: [{ index: true, element: page }] })
 
@@ -52,6 +54,7 @@ export const router = createBrowserRouter([
           { path: 'tasks/new', element: <TaskForm /> },
           { path: 'tasks/:taskId', element: <TaskDetail /> },
           { path: 'tasks/:taskId/edit', element: <TaskForm /> },
+          { path: 'rewards', element: <ParentRewards /> },
           { path: 'progress', element: <FirstChildProgress /> },
           { path: 'progress/:childId', element: <Progress /> },
           { path: 'family', element: <Family /> },
@@ -73,6 +76,7 @@ export const router = createBrowserRouter([
           { path: 'tasks/:taskId', element: <ChildTask /> },
           { path: 'growth', element: <Growth /> },
           { path: 'stickers', element: <Stickers /> },
+          { path: 'rewards', element: <Rewards /> },
           { path: '*', element: <NotFound /> },
         ],
       },

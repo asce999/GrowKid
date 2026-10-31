@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Lock, TriangleAlert } from 'lucide-react'
 import * as api from '../api/index.js'
+import { Cheer, CheerPicker } from '../components/Cheer.jsx'
 import { Field } from '../components/Field.jsx'
 import Proof from '../components/Proof.jsx'
 import { Earlier, Note, SentLine, Stamp } from '../components/Review.jsx'
@@ -15,13 +16,15 @@ import { statusOf } from '../utils/tasks.js'
 import NotFound from './NotFound.jsx'
 
 // A task as the parent sees it. When proof is waiting it leads with the proof, shown large,
-// with Approve as the one main button. Sending back opens its note in place: never a dialog.
+// with Approve as the one main button, and a cheer to add to an approval just above it. Sending
+// back opens its note in place: never a dialog.
 
 /**
- * Approve, or Send back with a note. On a phone the bar stays at the bottom of the screen while
- * the proof is looked at; on a desktop it sits beside the proof.
+ * Approve (with the cheer chosen above it, if any), or Send back with a note. On a phone the bar
+ * stays at the bottom of the screen while the proof is looked at; on a desktop it sits beside the
+ * proof.
  */
-function ReviewBar({ task, proof, onStale }) {
+function ReviewBar({ task, proof, cheer, onStale }) {
   const navigate = useNavigate()
   const [writing, setWriting] = useState(false)
   const [note, setNote] = useState('')
@@ -46,11 +49,14 @@ function ReviewBar({ task, proof, onStale }) {
       noticeExpiry(error)
       // reviewed already, in another tab or on another device: show the task as it stands
       if (error.code === 'REVIEWED' || error.code === 'NOT_FOUND') return onStale()
-      setState({ problem: errorText(error) })
+      setState({ problem: error.code === 'INVALID' && error.fields?.line ? 'Keep the line to 120 characters.' : errorText(error) })
     }
   }
+  const line = cheer.line.trim()
   const approve = () =>
-    answer(() => api.approveProof(task.id, proof.id), { approved: { child, points: task.points, title: task.title } })
+    answer(() => api.approveProof(task.id, proof.id, cheer.kind || line ? { kind: cheer.kind, line } : undefined), {
+      approved: { child, points: task.points, title: task.title },
+    })
   function sendBack(event) {
     event.preventDefault()
     if (!note.trim()) {
@@ -200,6 +206,7 @@ export default function TaskDetail() {
   const loaded = useLoad(() => api.getTask(taskId), [taskId])
   const [note] = useOnce()
   const [stale, setStale] = useState(false)
+  const [cheer, setCheer] = useState({ kind: null, line: '' }) // added to the approval, if there is one
 
   if (loaded.status === 'loading') return <PageLoading rows={3} />
   if (loaded.status === 'error') {
@@ -210,6 +217,7 @@ export default function TaskDetail() {
   const proof = task.proofs.at(-1)
   const review = proof?.review
   const label = `Proof from ${task.childName} for ${task.title}`
+  const reviewing = Boolean(proof) && task.status === 'review'
 
   return (
     <>
@@ -221,7 +229,10 @@ export default function TaskDetail() {
       <p className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
         <CategoryTile task={task} small />
         <StatusTag status={statusOf(task)} />
-        <span>For {task.childName}</span>
+        <span>
+          For {task.childName}
+          {task.pinned && ', who chose it to do next'}
+        </span>
         <Due task={task} className="type-small" />
         <Points value={task.points} />
       </p>
@@ -236,9 +247,13 @@ export default function TaskDetail() {
         </Message>
       )}
 
-      <div className={`mt-8 grid items-start gap-x-8 gap-y-6 ${proof ? 'lg:grid-cols-[3fr_2fr] lg:grid-rows-[auto_1fr]' : ''}`}>
+      <div
+        className={`mt-8 grid items-start gap-x-8 gap-y-6 ${
+          reviewing ? 'lg:grid-cols-[3fr_2fr] lg:grid-rows-[auto_auto_1fr]' : proof ? 'lg:grid-cols-[3fr_2fr] lg:grid-rows-[auto_1fr]' : ''
+        }`}
+      >
         {proof && (
-          <section aria-labelledby="proof-title" className="lg:row-span-2">
+          <section aria-labelledby="proof-title" className={reviewing ? 'lg:row-span-3' : 'lg:row-span-2'}>
             <h2 id="proof-title" className="type-subheading">
               Proof from {task.childName}
             </h2>
@@ -249,6 +264,7 @@ export default function TaskDetail() {
             {review?.result === 'approved' && (
               <>
                 <Stamp review={review} className="mt-4" />
+                <Cheer cheer={review.cheer} className="mt-2" />
                 <p className="mt-1 flex flex-wrap items-center gap-x-2">
                   {task.childName} earned <Points value={task.points} /> for this task.
                 </p>
@@ -264,14 +280,21 @@ export default function TaskDetail() {
           </section>
         )}
         {task.status === 'review' && (
-          <ReviewBar
-            task={task}
-            proof={proof}
-            onStale={() => {
-              setStale(true)
-              loaded.reload()
-            }}
-          />
+          <>
+            {/* its own grid item, and ReviewBar stays unwrapped: it is sticky on a phone */}
+            <div className="lg:col-start-2">
+              <CheerPicker value={cheer} onChange={setCheer} child={task.childName} />
+            </div>
+            <ReviewBar
+              task={task}
+              proof={proof}
+              cheer={cheer}
+              onStale={() => {
+                setStale(true)
+                loaded.reload()
+              }}
+            />
+          </>
         )}
 
         <div className="max-w-prose">

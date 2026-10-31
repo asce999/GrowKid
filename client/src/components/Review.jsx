@@ -1,5 +1,6 @@
 import { BadgeCheck, Undo2 } from 'lucide-react'
 import { whenText } from '../utils/format.js'
+import { Cheer } from './Cheer.jsx'
 import Proof from './Proof.jsx'
 
 // What a parent's review leaves on a task, shown the same to the parent and to the child:
@@ -27,14 +28,16 @@ export function Stamp({ review, className = '' }) {
   )
 }
 
-/** What an approval earned and why: the gain, the task it was for, and the stamp. */
+/** What an approval earned and why: the gain, the task it was for, the stamp, and the parent's cheer if there is one. */
 export function Gain({ task }) {
+  const review = task.proofs.at(-1).review
   return (
     <span className="min-w-0">
       <span className="block font-semibold break-words">
         <span className="type-game">+{task.points} XP</span> for {task.title}
       </span>
-      <Stamp review={task.proofs.at(-1).review} className="type-small" />
+      <Stamp review={review} className="type-small" />
+      {review.cheer && <Cheer cheer={review.cheer} className="type-small mt-1" />}
     </span>
   )
 }

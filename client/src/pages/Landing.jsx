@@ -19,7 +19,7 @@ import { STICKER_ICONS } from '../utils/stickers.js'
 // ------------------------------------------------------------------ 1. the opening
 
 // ponytail: these four are copied from the sticker chart (api/scoring.js), which pages may not
-// import, and so are "3 of 11" and "Eleven to collect" below. scoring.check.js asserts there are 11;
+// import, and so are "3 of 14" and "Fourteen to collect" below. scoring.check.js asserts there are 14;
 // if a name, a shape or the count changes there, change it here.
 const EXAMPLE_STICKERS = [
   { name: 'First task', shape: 'seal', tone: 'sun', tilt: -6 },
@@ -42,7 +42,7 @@ function ExampleBand() {
         <div className="mt-6">
           <Streak streak={{ days: 5, best: 5, week }} />
         </div>
-        <ul className="mt-6 grid grid-cols-4 gap-2" aria-label="Stickers: 3 of 11 earned">
+        <ul className="mt-6 grid grid-cols-4 gap-2" aria-label="Stickers: 3 of 14 earned">
           {EXAMPLE_STICKERS.map(({ name, slot, ...look }) => (
             <li key={name} className="grid justify-items-center gap-2 text-center">
               <Sticker icon={STICKER_ICONS[look.shape]} slot={slot} className="size-14" {...look} />
@@ -191,12 +191,14 @@ const FOR_PARENTS = [
   ['Clear tasks', 'Say what to do, when it is due and what it is worth, in your own words.'],
   ['Proof to review', 'See the photo, video, file or note your child sent. Approve it, or send it back with a note.'],
   ['Progress over time', 'See each child’s level, streak and stickers, the tasks approved each week, and print a report.'],
+  ['Rewards and quests', 'Add rewards your children can spend points on, set a weekly quest, and cheer them on when you approve.'],
 ]
 const FOR_CHILDREN = [
   ['One next task', 'Your home page opens on what to do next, and what it is worth.'],
   ['XP and levels', 'Every approved task fills your ruler. Every 100 XP is a new level.'],
-  ['A streak', 'Send proof on the days a task is due, and your streak grows. It never nags you.'],
-  ['Stickers', 'Eleven to collect. You earn each one once, and you keep it for good.'],
+  ['A streak', 'Send proof on the days a task is due, and your streak grows. Today reminds you once, and never anywhere else.'],
+  ['Stickers', 'Fourteen to collect. You earn each one once, and you keep it for good.'],
+  ['Rewards and quests', 'Spend points on rewards your parent sets, and finish a weekly quest for bonus points.'],
 ]
 
 function Gets({ title, items, id }) {

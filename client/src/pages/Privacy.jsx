@@ -47,11 +47,25 @@ export default function Privacy() {
       <Part id="child-title" title="What a child can see about themselves">
         <p>
           Everything a parent sees about them: the tasks, the proof they sent, the notes a parent wrote, who approved each task and
-          when, and their score, streak and stickers. Nothing is judged in secret.
+          when, and their score, streak and stickers. Nothing is judged in secret. The one thing a child does not see straight away is
+          a sealed surprise a parent puts in a weekly quest. It is about a reward, not about the child, and it opens when the quest is
+          complete.
         </p>
         <p>
           There is one difference in timing. When a parent approves a task, the parent’s pages count it at once. The child sees it
           arrive on their Today page first, with the reason, and after that it shows everywhere.
+        </p>
+      </Part>
+
+      <Part id="rewards-title" title="Rewards, quests and the family leaderboard">
+        <p>
+          A parent can add rewards, like choosing the film on Friday, and set a weekly quest. A child spends points on rewards; the
+          parent sees every request and answers it. A parent can also mark rest days, which keep a streak safe.
+        </p>
+        <p>
+          If a parent turns on the family leaderboard, each child sees their brothers’ and sisters’ first names and how many tasks
+          were approved for each of them this week. Nothing else: not their tasks, proof, points or level. Nobody outside the family
+          is ever on it, and it is off unless a parent turns it on.
         </p>
       </Part>
 

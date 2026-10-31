@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
-import { CalendarDays, ChartNoAxesColumn, House, ListTodo, LogOut, Sprout, Sticker, Users } from 'lucide-react'
+import { CalendarDays, ChartNoAxesColumn, Gift, House, ListTodo, LogOut, Sprout, Sticker, Users } from 'lucide-react'
 import * as api from '../api/index.js'
 import { noticeExpiry } from '../hooks/useLoad.js'
 import { homeFor, useSession } from '../store/session.js'
@@ -14,6 +14,7 @@ import Logo from './Logo.jsx'
 const PARENT_NAV = [
   { to: '/parent', label: 'Overview', Icon: House, end: true },
   { to: '/parent/tasks', label: 'Tasks', Icon: ListTodo },
+  { to: '/parent/rewards', label: 'Rewards', Icon: Gift },
   { to: '/parent/progress', label: 'Progress', Icon: ChartNoAxesColumn },
   { to: '/parent/family', label: 'Family', Icon: Users },
 ]
@@ -25,6 +26,7 @@ const CHILD_NAV = [
   { to: '/child', label: 'Today', Icon: CalendarDays, end: true, also: '/child/tasks' }, // a task is opened from Today
   { to: '/child/growth', label: 'Growth', Icon: Sprout },
   { to: '/child/stickers', label: 'Stickers', Icon: Sticker },
+  { to: '/child/rewards', label: 'Rewards', Icon: Gift },
 ]
 const CHILD_MENU = [
   { to: '/privacy', label: 'What parents can see' },
@@ -32,20 +34,21 @@ const CHILD_MENU = [
 ]
 
 /**
- * count is a number for one item: `to` is its path, `n` the number and `what` the words a
- * screen reader hears after it. With `away` set the number shows only if it was asked for from
- * another page: the item's own page is already showing the news, and what was counted there
- * is out of date by the time the child leaves.
+ * counts holds a number for each item that has one: `to` is its path, `n` the number and `what`
+ * the words a screen reader hears after it. With `away` set the number shows only if it was
+ * asked for from another page: the item's own page is already showing the news, and what was
+ * counted there is out of date by the time the child leaves.
  */
-function NavItems({ items, count }) {
+function NavItems({ items, counts }) {
   const { pathname } = useLocation()
   return items.map(({ to, label, Icon, end, also }) => {
+    const count = counts?.find((c) => c.to === to)
     const here = (end ? pathname === to : pathname.startsWith(to)) || (also && pathname.startsWith(also))
     return (
       <Link key={to} to={to} className="nav-item" aria-current={here ? 'page' : undefined}>
         <Icon className="size-5 shrink-0" aria-hidden="true" />
         {label}
-        {count?.to === to && count.n > 0 && !(count.away && count.askedAt === to) && (
+        {count?.n > 0 && !(count.away && count.askedAt === to) && (
           <span className="nav-count">
             {count.n}
             <span className="sr-only"> {count.what}</span>
@@ -70,10 +73,12 @@ function useCount(ask_) {
     ask()
     const timer = setInterval(ask, 60_000)
     window.addEventListener('focus', ask)
+    window.addEventListener('growkid:counts', ask) // for a page that deals with the thing without leaving
     return () => {
       current = false
       clearInterval(timer)
       window.removeEventListener('focus', ask)
+      window.removeEventListener('growkid:counts', ask)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname])
@@ -131,7 +136,10 @@ function AccountMenu({ items }) {
 
 export function ParentShell() {
   const user = useSession((s) => s.user)
-  const count = { to: '/parent', ...useCount(api.countProofsWaiting), what: 'waiting for review' }
+  const counts = [
+    { to: '/parent', ...useCount(api.countProofsWaiting), what: 'waiting for review' },
+    { to: '/parent/rewards', ...useCount(api.countRequestsWaiting), what: 'reward requests waiting' },
+  ]
   return (
     <div className="lg:grid lg:min-h-page lg:grid-cols-[var(--container-sidebar)_minmax(0,1fr)] print:block">
       <aside className="nav-rail sticky top-(--banner-h) hidden h-[calc(100dvh-var(--banner-h))] flex-col overflow-y-auto bg-white py-6 pr-7 pl-4 lg:flex print:hidden">
@@ -139,7 +147,7 @@ export function ParentShell() {
           <Logo />
         </Link>
         <nav aria-label="Main" className="grid gap-1">
-          <NavItems items={PARENT_NAV} count={count} />
+          <NavItems items={PARENT_NAV} counts={counts} />
         </nav>
         <div className="mt-auto grid gap-1 border-t pt-4">
           <p className="flex items-center gap-3 px-3 py-2">
@@ -171,8 +179,8 @@ export function ParentShell() {
         <Outlet />
       </main>
 
-      <nav aria-label="Main" className="nav-bar grid-cols-4 bg-white lg:hidden print:hidden">
-        <NavItems items={PARENT_NAV} count={count} />
+      <nav aria-label="Main" className="nav-bar grid-cols-5 bg-white lg:hidden print:hidden">
+        <NavItems items={PARENT_NAV} counts={counts} />
       </nav>
     </div>
   )
@@ -189,7 +197,7 @@ export function ChildShell() {
             <Logo />
           </Link>
           <nav aria-label="Main" className="hidden gap-1 lg:flex">
-            <NavItems items={CHILD_NAV} count={count} />
+            <NavItems items={CHILD_NAV} counts={[count]} />
           </nav>
           <div className="ml-auto flex items-center gap-1">
             <SignOut className="btn btn-text whitespace-nowrap" />
@@ -202,8 +210,8 @@ export function ChildShell() {
         <Outlet />
       </main>
 
-      <nav aria-label="Main" className="on-navy nav-bar grid-cols-3 lg:hidden">
-        <NavItems items={CHILD_NAV} count={count} />
+      <nav aria-label="Main" className="on-navy nav-bar grid-cols-4 lg:hidden">
+        <NavItems items={CHILD_NAV} counts={[count]} />
       </nav>
     </div>
   )

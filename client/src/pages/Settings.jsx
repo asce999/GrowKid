@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { TriangleAlert } from 'lucide-react'
 import * as api from '../api/index.js'
@@ -10,8 +11,8 @@ import { focusFirstInvalid } from '../utils/forms.js'
 import { errorText } from '../utils/messages.js'
 import { rules } from '../utils/rules.js'
 
-// The parent's own account: name, password, and deleting the family's data. Short and plain
-// (DESIGN.md section 12, principle 9). Deleting is the most destructive thing in the product, so
+// The parent's own account: name, password, the family leaderboard switch, and deleting the
+// family's data. Short and plain (DESIGN.md section 12, principle 9). Deleting is the most destructive thing in the product, so
 // it says exactly what goes and asks for the password; it is not dressed up as a danger zone.
 
 function Name({ user }) {
@@ -127,6 +128,52 @@ function Password() {
   )
 }
 
+/** The one switch that shows children each other's week. It saves as soon as it is changed. */
+function Leaderboard({ settings }) {
+  const [on, setOn] = useState(settings.leaderboard)
+  const [state, setState] = useState({})
+  const box = useRef(null)
+
+  async function change(event) {
+    const checked = event.target.checked
+    setOn(checked)
+    setState({ busy: true })
+    let next = { saved: true }
+    try {
+      await api.setLeaderboard(checked)
+    } catch (failure) {
+      setOn(!checked) // the box goes back to what is saved
+      next = { problem: errorText(noticeExpiry(failure)) }
+    }
+    // disabling the box dropped the focus from it: draw it enabled again, then put the focus back
+    flushSync(() => setState(next))
+    box.current?.focus()
+  }
+
+  return (
+    <div className="grid max-w-prose gap-3">
+      <label className="flex min-h-11 items-start gap-3">
+        <input ref={box} type="checkbox" className="mt-0.5 size-5 shrink-0" checked={on} disabled={state.busy} onChange={change} />
+        <span>Show a weekly leaderboard to my children</span>
+      </label>
+      <p className="type-small muted">
+        Each child sees their brothers’ and sisters’ first names and how many of their tasks were approved this week. Nothing else. It
+        starts again every Monday, and it only appears with two or more children.
+      </p>
+      {state.problem && (
+        <Message tone="danger" alert>
+          {state.problem}
+        </Message>
+      )}
+      {state.saved && (
+        <Message tone="success" role="status">
+          Saved.
+        </Message>
+      )}
+    </div>
+  )
+}
+
 function DeleteFamily({ user, family }) {
   const deleteFamily = useSession((s) => s.deleteFamily)
   const dialog = useRef(null)
@@ -220,20 +267,20 @@ function DeleteFamily({ user, family }) {
 
 export default function Settings() {
   const user = useSession((s) => s.user)
-  const family = useLoad(api.listChildren)
+  const loaded = useLoad(() => Promise.all([api.listChildren(), api.getSettings()]))
   if (!user) return null // deleted a moment ago, and on the way to Landing
 
   return (
     <>
       <title>Settings – GrowKid</title>
       <h1>Settings</h1>
-      {family.status === 'loading' ? (
+      {loaded.status === 'loading' ? (
         <div className="mt-6">
           <PageLoading rows={3} />
         </div>
-      ) : family.status === 'error' ? (
+      ) : loaded.status === 'error' ? (
         <div className="mt-6">
-          <ErrorState error={family.error} onRetry={family.reload} />
+          <ErrorState error={loaded.error} onRetry={loaded.reload} />
         </div>
       ) : (
         <>
@@ -250,11 +297,17 @@ export default function Settings() {
             </h2>
             <Password />
           </section>
+          <section className="mt-8 border-t pt-6" aria-labelledby="leaderboard-title">
+            <h2 id="leaderboard-title" className="type-subheading mb-4">
+              Family leaderboard
+            </h2>
+            <Leaderboard settings={loaded.data[1]} />
+          </section>
           <section className="mt-8 border-t pt-6" aria-labelledby="delete-section-title">
             <h2 id="delete-section-title" className="type-subheading mb-4">
               Delete the family’s data
             </h2>
-            <DeleteFamily user={user} family={family.data} />
+            <DeleteFamily user={user} family={loaded.data[0]} />
           </section>
         </>
       )}
