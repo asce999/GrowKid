@@ -20,6 +20,11 @@ assert.equal(nextTask(inDueOrder).status, 'sentBack')
 assert.equal(nextTask(inDueOrder.slice(0, 3)).id, 'overdue')
 assert.equal(nextTask([task('review', at(1)), task('approved', at(2))]), undefined)
 
+// the child's own choice comes first while it is open, and is ignored once it is not
+const chosen = (status, id) => ({ ...task(status, at(5), id), pinned: true })
+assert.equal(nextTask([...inDueOrder, chosen('todo', 'chosen')]).id, 'chosen') // a pinned open task beats a sent-back one
+assert.equal(nextTask([chosen('approved', 'done'), ...inDueOrder.slice(0, 3)]).id, 'overdue') // a pinned approved task is ignored
+
 // this week: due before next Monday, and either due since this Monday or still open
 assert.equal(inThisWeek(task('todo', at(-24 * 30))), true) // long overdue, still open
 assert.equal(inThisWeek(task('approved', at(-24 * 30))), false) // long done

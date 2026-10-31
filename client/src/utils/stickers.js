@@ -3,6 +3,16 @@ import { Check, Flame, Sprout, Star } from 'lucide-react'
 /** The icon on each shape of sticker (DESIGN.md section 10). The shape says what kind it is. */
 export const STICKER_ICONS = { seal: Check, shield: Flame, hexagon: Sprout, star: Star }
 
+/** What each measure counts, for "7 of 10 tasks approved". */
+export const MEASURE_WORDS = {
+  approved: 'tasks approved',
+  streak: 'days in your best streak',
+  level: 'levels',
+  kinds: 'kinds of task',
+  firstTry: 'tasks right first time',
+  quests: 'weekly quests completed',
+}
+
 /** How far each sticker in a row is turned, so a chart looks stuck on by hand. */
 export const tiltOf = (i) => [-6, 4, -3, 5, -4, 3][i % 6]
 

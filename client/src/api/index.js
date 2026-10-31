@@ -15,6 +15,7 @@
  * @property {string} note        what to fix; always present when sent back, '' when approved
  * @property {string} by          the parent's name, as the child sees it
  * @property {string} at          ISO time
+ * @property {Cheer} [cheer]      the parent's words with an approval; present only when they chose a kind or wrote a line
  *
  * @typedef {object} Proof  One attempt at proving a task: a file, a note, or both.
  * @property {string} id
@@ -41,6 +42,7 @@
  * @property {string} createdAt   ISO time
  * @property {Proof[]} proofs     every attempt, oldest first; only the newest can be waiting
  * @property {boolean} resultSeen false from a review until the child has seen its result on Today
+ * @property {boolean} pinned     the child chose this as the task to do next, and it is still open
  *
  * @typedef {object} TaskDetails  What a parent types.
  * @property {string} childId
@@ -53,11 +55,13 @@
  * @typedef {object} Streak
  * @property {number} days   days that count since the last missed day
  * @property {number} best   the longest it has been
- * @property {{ day: string, state: 'done' | 'missed' | 'none' }[]} week  the last seven days, today last
+ * @property {{ day: string, state: 'done' | 'missed' | 'none' | 'rest' }[]} week  the last seven days, today last
  *   A day is 'done' when proof the child sent that day was approved, whenever that happened;
  *   'missed' when a task was due on it and no proof for that task had been sent by the end of
  *   the day, unless the child sent any proof that day, whatever became of it (so a parent sending
- *   it back never makes a missed day); otherwise 'none', which changes nothing.
+ *   it back never makes a missed day); otherwise 'none', which changes nothing. A day a parent set
+ *   as a rest day is 'rest' instead of 'missed': it neither adds to the streak nor breaks it, and
+ *   if proof was approved on it, it is 'done'.
  *
  * @typedef {object} Score
  * @property {number} level
@@ -66,11 +70,16 @@
  * @property {number} points      every point ever earned; an approved task's points are its XP
  * @property {number} waitingXp   the points of tasks whose proof is waiting for approval
  * @property {Streak} streak
+ * @property {number} balance     points that can be spent: points, plus the bonus of every quest
+ *   completed, minus the cost of every request that is waiting or given. Spending never lowers
+ *   points, XP or level
+ * @property {Quest | null} quest this week's quest, or null when none is set
  *
- * @typedef {Score & { shown: Score }} Growth
+ * @typedef {Score & { shown: Score, questAwards: QuestAward[] }} Growth
  *   shown is the score as the child has been shown it on Today: an approval whose result they
- *   have not seen yet (resultSeen false) still counts as waiting there. The reward moment plays
- *   from shown to the score itself.
+ *   have not seen yet (resultSeen false) still counts as waiting there, and so does a quest
+ *   completed with it. The reward moment plays from shown to the score itself. What a child can
+ *   spend is shown.balance. questAwards are the quests completed, newest first.
  *
  * @typedef {object} Sticker
  * @property {string} id
@@ -78,6 +87,12 @@
  * @property {string} how         one sentence saying what earns it
  * @property {'seal' | 'shield' | 'hexagon' | 'star'} shape  task counts, streaks, levels, a skill
  * @property {'sun' | 'sprout' | 'navy'} tone
+ * @property {'approved' | 'streak' | 'level' | 'kinds' | 'firstTry' | 'quests'} measure  what it is
+ *   counted by: tasks approved, best streak, level, kinds of task done, tasks right first time,
+ *   or weekly quests completed
+ * @property {number} need        how much of that earns it
+ * @property {number} [have]      how much of it the child has, at most need; only on a sticker not
+ *   yet earned or not yet seen, and only from listStickers
  * @property {string} [earnedAt]  ISO time of the approval that earned it; absent until earned
  * @property {string} [taskId]    the task that approval was for
  * @property {string} [taskTitle]
@@ -88,8 +103,8 @@
  * @property {{ start: string, tasks: number, xp: number }[]} weeks  the last six weeks, Monday to
  *   Sunday, this week last: the tasks approved and the XP they earned. A task belongs to the week
  *   its approved proof was sent in.
- * @property {{ day: string, state: 'done' | 'missed' | 'none' }[]} calendar  the streak's day
- *   marks, from the Monday three weeks before this week's up to today
+ * @property {{ day: string, state: 'done' | 'missed' | 'none' | 'rest' }[]} calendar  the streak's
+ *   day marks, from the Monday three weeks before this week's up to today; 'rest' is as in Streak
  * @property {{ approved: number, waiting: number, open: number, overdue: number }} counts  tasks
  *   approved, waiting for review, still to do (sent back included), and how many of those are overdue
  * @property {Sticker[]} stickers  every sticker, with earnedAt on the ones earned; no `seen`
@@ -110,6 +125,33 @@
  * @property {string} sentAt            ISO time
  * @property {ReportItem} [item]        present when it was sent from a task's page
  * @property {{ note: string, at: string }} [resolution]  the moderator's answer, once resolved
+ *
+ * @typedef {'proud' | 'tidy' | 'brave' | 'clever' | 'kind' | 'effort'} CheerKind
+ * @typedef {{ kind: CheerKind | null, line: string }} Cheer  a parent's words with an approval
+ * @typedef {{ id: string, title: string, cost: number }} Reward  something a child can spend points on
+ * @typedef {object} RewardRequest
+ * @property {string} id
+ * @property {string} childId
+ * @property {string} childName
+ * @property {string} rewardId    may name a reward since deleted; title and cost are copies
+ * @property {string} title
+ * @property {number} cost
+ * @property {'requested' | 'given' | 'declined'} status
+ * @property {string} note        the parent's note when declined, '' otherwise
+ * @property {string} requestedAt ISO time
+ * @property {{ by: string, at: string }} [answer]
+ * @typedef {{ target: number, bonus: number, surprise: string | null }} QuestDef  what a parent sets
+ * @typedef {object} Quest  this week's quest. A child is given surprise only once it is complete and seen.
+ * @property {string} week       'YYYY-MM-DD' of its Monday
+ * @property {number} target
+ * @property {number} bonus
+ * @property {number} done       tasks approved this week, at most target
+ * @property {boolean} completed
+ * @property {boolean} sealed    a surprise is waiting and not yet shown
+ * @property {string | null} surprise
+ * @typedef {{ week: string, target: number, bonus: number, surprise: string | null, earnedAt: string,
+ *   taskId: string, taskTitle: string, seen?: boolean }} QuestAward
+ * @typedef {{ name: string, tasks: number, you: boolean }} LeaderboardEntry
  */
 import * as server from './fake.js'
 
@@ -255,8 +297,11 @@ export const sendProof = server.sendProof
 /**
  * A parent approves the newest proof of a task in review. The task becomes 'approved' and its
  * points are awarded, once: a second attempt from anywhere rejects REVIEWED, as does a proofId
- * that is no longer the newest proof.
- * @type {(taskId: string, proofId: string) => Promise<Task>}
+ * that is no longer the newest proof. cheer is optional; a kind of null with an empty line stores
+ * nothing. Rejects INVALID with fields.cheer ('kind', when it is not one of the six) or
+ * fields.line ('length', over 120 characters once trimmed). An approval that reaches the child's
+ * quest target for the week its proof was sent in also completes that quest.
+ * @type {(taskId: string, proofId: string, cheer?: Cheer) => Promise<Task>}
  */
 export const approveProof = server.approveProof
 
@@ -282,14 +327,17 @@ export const markResultsSeen = server.markResultsSeen
 export const countProofsWaiting = server.countProofsWaiting
 
 /**
- * The signed-in child's level, XP, points and streak, all worked out from their tasks by the
- * award rules. Rejects NOT_ALLOWED for other roles.
+ * The signed-in child's level, XP, points, streak, balance and this week's quest, all worked out
+ * from their tasks, rest days and completed quests by the award rules. The quest's surprise is
+ * null, and sealed true, until the quest is complete and the child has seen it. Rejects
+ * NOT_ALLOWED for other roles.
  * @type {() => Promise<Growth>}
  */
 export const getGrowth = server.getGrowth
 
 /**
- * The same for each of the signed-in parent's children, by child id.
+ * The same for each of the signed-in parent's children, by child id. A parent reads every quest
+ * with its surprise; sealed is true while the quest is not yet complete.
  * @type {() => Promise<Record<string, Growth>>}
  */
 export const listGrowth = server.listGrowth
@@ -314,6 +362,117 @@ export const countNewResults = server.countNewResults
  * @type {(childId: string) => Promise<Progress>}
  */
 export const getProgress = server.getProgress
+
+// ------------------------------------------------------------------ rewards, quests and the rest
+
+/**
+ * The family's rewards, cheapest first: a parent's own, or those of the signed-in child's parent.
+ * Rejects NOT_ALLOWED for a moderator.
+ * @type {() => Promise<Reward[]>}
+ */
+export const listRewards = server.listRewards
+
+/**
+ * A parent creates a reward, or with an id changes one of their own. The title is 3 to 60
+ * characters and screened like a task; the cost is 10 to 1,000 points, in tens.
+ * Rejects INVALID with fields.title ('length') or fields.cost ('range'), SCREENED with
+ * fields.word, and NOT_FOUND for an id that is not theirs.
+ * @type {(reward: { id?: string, title: string, cost: number }) => Promise<Reward>}
+ */
+export const saveReward = server.saveReward
+
+/**
+ * A parent deletes one of their rewards. Requests already made for it stay and can still be
+ * answered, because each keeps its own copy of the title and cost. Rejects NOT_FOUND.
+ * @type {(id: string) => Promise<void>}
+ */
+export const deleteReward = server.deleteReward
+
+/**
+ * A child asks for one of their parent's rewards. The points are held at once, and the cost is
+ * checked against the child's shown balance (rule 13). Rejects NOT_ENOUGH when it costs more than
+ * that, and NOT_FOUND for a reward that is not their parent's.
+ * @type {(rewardId: string) => Promise<RewardRequest>}
+ */
+export const requestReward = server.requestReward
+
+/**
+ * The requests, newest first: a parent's whole family, or a child's own. Rejects NOT_ALLOWED for
+ * a moderator.
+ * @type {() => Promise<RewardRequest[]>}
+ */
+export const listRequests = server.listRequests
+
+/**
+ * A parent gives or declines a request in their family; a note of up to 200 characters goes with
+ * a decline. Declining gives the points back. It is answered once: a second answer rejects
+ * REVIEWED. Rejects INVALID with fields.result ('required', when it is not 'given' or 'declined')
+ * or fields.note ('length'), and NOT_FOUND for a request of another family.
+ * @type {(id: string, result: 'given' | 'declined', note?: string) => Promise<RewardRequest>}
+ */
+export const answerRequest = server.answerRequest
+
+/**
+ * How many requests in the signed-in parent's family are waiting for an answer.
+ * @type {() => Promise<number>}
+ */
+export const countRequestsWaiting = server.countRequestsWaiting
+
+/**
+ * A parent sets one quest for a child: tasks to have approved in a week (2 to 20), a bonus in
+ * points (10 to 200, in fives) and an optional surprise of up to 80 characters, which is screened;
+ * an empty one means none. null removes the quest. Changing it does not change a quest already
+ * completed. A surprise opens once: completing the quest empties it from the quest. Rejects
+ * INVALID with fields.target ('range', or 'done' when that many are already approved this week and
+ * the week's quest is not complete), fields.bonus ('range') or
+ * fields.surprise ('length'), SCREENED with fields.word, and NOT_FOUND for a child who is not theirs.
+ * @type {(childId: string, def: QuestDef | null) => Promise<QuestDef | null>}
+ */
+export const setQuest = server.setQuest
+
+/**
+ * The rest days a parent has set for a child, as 'YYYY-MM-DD', oldest first, from 7 days ago
+ * onward. Rejects NOT_FOUND for a child who is not theirs.
+ * @type {(childId: string) => Promise<string[]>}
+ */
+export const listRestDays = server.listRestDays
+
+/**
+ * A parent sets or clears one rest day for a child, from 7 days ago up to 90 days ahead, both
+ * included, and gets the new list back as listRestDays gives it. Rejects INVALID with
+ * fields.day ('range'), and NOT_FOUND for a child who is not theirs.
+ * @type {(childId: string, day: string, rest: boolean) => Promise<string[]>}
+ */
+export const setRestDay = server.setRestDay
+
+/**
+ * A child chooses the task to do next, or null to clear the choice, and gets their tasks back as
+ * listTasks gives them. Only one at a time: this replaces any earlier choice. The choice clears
+ * by itself when proof is sent for that task or it is deleted. Rejects LOCKED when the task is not
+ * open (to do or sent back), and NOT_FOUND for a task that is not theirs.
+ * @type {(taskId: string | null) => Promise<Task[]>}
+ */
+export const pinTask = server.pinTask
+
+/**
+ * The family's children and the tasks each has had approved this week, by name, most first,
+ * counting only approvals each child has been shown. null when the parent has not turned it on or
+ * the family has fewer than 2 children. Rejects NOT_ALLOWED for other roles.
+ * @type {() => Promise<LeaderboardEntry[] | null>}
+ */
+export const getLeaderboard = server.getLeaderboard
+
+/**
+ * The signed-in parent's settings. The leaderboard is off until they turn it on.
+ * @type {() => Promise<{ leaderboard: boolean }>}
+ */
+export const getSettings = server.getSettings
+
+/**
+ * A parent turns the family leaderboard on or off.
+ * @type {(on: boolean) => Promise<{ leaderboard: boolean }>}
+ */
+export const setLeaderboard = server.setLeaderboard
 
 // ------------------------------------------------------------------ reports
 

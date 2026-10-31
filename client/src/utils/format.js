@@ -17,6 +17,16 @@ export function whenText(iso) {
   return `${Math.abs(days) <= 1 ? nearby.format(days, 'day') : calendar.format(date)}, ${clock.format(date)}`
 }
 
+/**
+ * A local calendar day as 'YYYY-MM-DD', the same as scoring.js's dayKey (pages may not import
+ * scoring.js). To turn a key back into a date, use new Date(`${key}T00:00`), which is local time;
+ * new Date(key) alone is UTC and can land on the day before.
+ */
+export const dayKeyOf = (time) => {
+  const d = new Date(time)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 /** An ISO time as the value of a datetime-local input, which is in local time. */
 export function toLocalInput(iso) {
   const date = new Date(iso)
@@ -31,4 +41,4 @@ export const fileSizeText = (bytes) =>
 export const initialOf = (name) => ([...(name ?? '')][0] ?? '').toUpperCase()
 
 /** A streak's day mark in words, for a screen reader. */
-export const DAY_SAID = { done: 'counted', missed: 'missed', none: 'nothing to count' }
+export const DAY_SAID = { done: 'counted', missed: 'missed', rest: 'a rest day', none: 'nothing to count' }

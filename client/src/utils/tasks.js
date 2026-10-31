@@ -18,12 +18,15 @@ export const statusOf = (task) =>
 export const isOpen = (task) => task.status === 'todo' || task.status === 'sentBack'
 
 /**
- * The child's next task. Something a parent sent back comes first, because fixing it is the
- * next step. Otherwise it is the task still to do that is due soonest, so an overdue task is
- * always next. The API returns tasks soonest due first. This is the only place that decides it.
+ * The child's next task. The task the child chose comes first, for as long as it is open (rule
+ * 22). Otherwise something a parent sent back comes first, because fixing it is the next step.
+ * Otherwise it is the task still to do that is due soonest, so an overdue task is always next.
+ * The API returns tasks soonest due first. This is the only place that decides it.
  */
 export const nextTask = (tasks) =>
-  tasks.find((task) => task.status === 'sentBack') ?? tasks.find((task) => task.status === 'todo')
+  tasks.find((task) => task.pinned && isOpen(task)) ??
+  tasks.find((task) => task.status === 'sentBack') ??
+  tasks.find((task) => task.status === 'todo')
 
 /** The parent's answer to the newest proof, if it has one. */
 export const lastReview = (task) => task.proofs.at(-1)?.review

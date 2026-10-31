@@ -9,7 +9,8 @@
  * SCREENED        content screening refused a task; `fields.word` is the word it found
  * LOCKED          the task can no longer be changed that way (see the rules on each function)
  * REVIEWED        the proof has already been approved or sent back, or is no longer the newest
- * FILE_TYPE       a proof file is not a photo, a video or a PDF
+ * NOT_ENOUGH      a reward costs more points than the child has to spend
+ * FILE_TYPE      a proof file is not a photo, a video or a PDF
  * FILE_TOO_LARGE  a proof file is over the size limit
  * NOT_SIGNED_IN   no session, or it has expired
  * NOT_ALLOWED     signed in, but this role may not do that
@@ -18,7 +19,7 @@
  * SERVER          the server failed
  *
  * @typedef {'WRONG_DETAILS' | 'WRONG_PASSWORD' | 'EMAIL_TAKEN' | 'USERNAME_TAKEN' | 'INVALID' | 'SCREENED' | 'LOCKED'
- *   | 'REVIEWED' | 'FILE_TYPE' | 'FILE_TOO_LARGE' | 'NOT_SIGNED_IN' | 'NOT_ALLOWED' | 'NOT_FOUND' | 'NETWORK'
+ *   | 'REVIEWED' | 'NOT_ENOUGH' | 'FILE_TYPE' | 'FILE_TOO_LARGE' | 'NOT_SIGNED_IN' | 'NOT_ALLOWED' | 'NOT_FOUND' | 'NETWORK'
  *   | 'SERVER'} ApiErrorCode
  */
 export class ApiError extends Error {

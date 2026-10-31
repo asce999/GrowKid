@@ -4,6 +4,7 @@ const TEXT = {
   NOT_ALLOWED: 'Your account cannot do that.',
   NOT_FOUND: 'That no longer exists. It may have been deleted.',
   LOCKED: 'That can no longer be changed.',
+  NOT_ENOUGH: 'You do not have enough points for that yet.',
 }
 
 /** Plain words for a failed request: what happened and what to do. */

@@ -1,7 +1,9 @@
 // The runnable check of the award rules: `npm run check`. A wrong award is the bug a child
 // would notice first, so each rule has a line here that fails if it breaks.
 import assert from 'node:assert/strict'
-import { STICKERS, progress, score, stickers } from './scoring.js'
+import {
+  STICKERS, approvedInWeek, balanceOf, dayKey, progress, questCompletedBy, questOf, recordOf, score, stickers, weekKey,
+} from './scoring.js'
 
 const NOW = new Date(2026, 9, 20, 15, 0) // a Tuesday afternoon; days below count back from it
 const at = (daysAgo, hour = 12) => new Date(2026, 9, 20 - daysAgo, hour).toISOString()
@@ -26,7 +28,7 @@ function sentBack({ sent, ...rest }) {
   back.proofs.at(-1).review = { result: 'sentBack', at: at(sent.at(-1), 13) }
   return back
 }
-const earned = (tasks) => stickers(tasks).filter((s) => s.earnedAt).map((s) => s.id)
+const earned = (tasks, input) => stickers(tasks, input).filter((s) => s.earnedAt).map((s) => s.id)
 
 // ------------------------------------------------------------------ XP, points and levels
 const nothing = score([], NOW)
@@ -59,8 +61,20 @@ assert.equal(streak(answered).week[5].state, 'none') // yesterday: not missed, a
 assert.equal(streak([done(2), task({ due: 1 })]).days, 0) // with no proof sent that day it is missed, as before
 assert.deepEqual(streak(broken).week.map((d) => d.state), ['none', 'none', 'done', 'done', 'missed', 'done', 'done'])
 
+// ------------------------------------------------------------------ rest days
+// yesterday had a task due and nothing sent, so without a rest day it is missed
+const skipped = [done(2), task({ due: 1 }), done(0)]
+const rest = [dayKey(at(1))]
+const resting = score(skipped, NOW, rest).streak
+assert.equal(streak(skipped).days, 1) // the control: no rest day, the streak starts again
+assert.equal(resting.days, 2) // a rest day saves the streak: it neither adds a day nor breaks it
+assert.equal(resting.week[5].state, 'rest') // yesterday
+assert.equal(score([done(2), done(1), done(0)], NOW, rest).streak.week[5].state, 'done') // proof approved on a rest day still counts
+assert.deepEqual(progress(skipped, NOW, rest).calendar.slice(-3).map((d) => d.state), ['done', 'rest', 'done']) // the calendar shows the same marks
+
 // ------------------------------------------------------------------ each sticker's condition
-assert.equal(STICKERS.length, 11)
+assert.equal(STICKERS.length, 14)
+assert.ok(STICKERS.every((s) => typeof s.measure === 'string' && s.need > 0)) // a rule is data: a figure and the amount it needs
 assert.deepEqual(earned([]), [])
 assert.deepEqual(earned([task({ due: 0, sent: [0] })]), []) // nothing is earned until a parent approves
 assert.deepEqual(earned([done(9)]), ['first-task'])
@@ -91,6 +105,11 @@ assert.deepEqual([third.taskId, third.earnedAt], [three[2].id, three[2].proofs[0
 assert.equal(stickers(three).find((s) => s.id === 'first-task').taskId, three[0].id)
 assert.equal(stickers(three).find((s) => s.id === 'level-10').earnedAt, undefined)
 
+// a completed quest earns its sticker from the approval it was earned with; without one there is none
+assert.ok(earned(run(1), { questAwards: [{ earnedAt: run(1)[0].proofs[0].review.at }] }).includes('quest-1'))
+assert.ok(!earned(run(1)).includes('quest-1'))
+assert.equal(recordOf(Array.from({ length: 7 }, () => done(40)), NOW).approved, 7) // the record the stickers are measured by
+
 // ------------------------------------------------------------------ progress by week
 // NOW is a Tuesday, so this week began yesterday. Proof sent on Sunday and approved on Monday
 // belongs to last week: the week is the one the child sent it in.
@@ -104,5 +123,23 @@ assert.equal(weekly.weeks.reduce((n, week) => n + week.tasks, 0), 3) // older th
 assert.equal(weekly.calendar.length, 23) // three whole weeks, then Monday and today
 assert.equal(new Date(weekly.calendar[0].day).getDay(), 1)
 assert.deepEqual(weekly.calendar.slice(-5).map((d) => d.state), ['none', 'missed', 'done', 'done', 'done']) // the same marks as the streak
+
+// ------------------------------------------------------------------ days, the balance and the weekly quest
+assert.equal(dayKey(new Date(2026, 9, 5)), '2026-10-05') // the local day, not the UTC one
+const thisWeek = weekKey(NOW)
+assert.equal(thisWeek, '2026-10-19') // NOW is a Tuesday: its week is named by Monday
+assert.equal(balanceOf(120, [{ bonus: 50 }], [{ cost: 50, status: 'given' }, { cost: 100, status: 'declined' }, { cost: 10, status: 'requested' }]), 110) // a quest adds; waiting and given requests hold points; a declined one holds none
+assert.deepEqual([approvedInWeek([acrossTheBoundary], thisWeek), approvedInWeek([acrossTheBoundary], weekKey(at(2)))], [0, 1]) // counted by the week the proof was sent: Sunday's belongs to last week
+const two = [done(1), done(0)] // Monday and today
+const def = { target: 2, bonus: 50, surprise: null }
+assert.equal(questOf(two, null, {}, NOW), null) // no quest set
+assert.deepEqual([questOf(two, def, {}, NOW).done, questOf(two, def, {}, NOW).completed], [2, false]) // the target is reached but it is complete only once awarded
+assert.equal(questOf(two, def, { [thisWeek]: {} }, NOW).completed, true)
+assert.equal(questOf([...two, done(0)], def, {}, NOW).done, 2) // never more than the target
+assert.equal(questCompletedBy(two, def, {}, two[1]), thisWeek) // the approval that reaches the target
+assert.equal(questCompletedBy(two.slice(1), def, {}, two[1]), null) // one short
+assert.equal(questCompletedBy(two, def, { [thisWeek]: {} }, two[1]), null) // a week is completed once
+assert.equal(questCompletedBy(two, null, {}, two[1]), null) // nothing set
+assert.equal(questCompletedBy([acrossTheBoundary], { ...def, target: 1 }, {}, acrossTheBoundary), weekKey(at(2))) // sent Sunday, approved Monday: last week's quest
 
 console.log('award rules hold')
