@@ -1,15 +1,205 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+enum Role {
+  parent
+  child
+  moderator
+}
+
+enum Category {
+  chores
+  study
+  reading
+  creative
+  outdoors
+  health
+}
+
+enum TaskStatus {
+  todo
+  review
+  sentBack
+  approved
+}
+
+enum ReviewResult {
+  approved
+  sentBack
+}
+
+enum CheerKind {
+  proud
+  tidy
+  brave
+  clever
+  kind
+  effort
+}
+
+enum RequestStatus {
+  requested
+  given
+  declined
+}
+
+/// A parent, a child or a moderator. A child belongs to one parent (D1).
+model User {
+  id           String   @id @default(uuid())
+  role         Role
+  name         String
+  email        String?  @unique // parents and moderators, lower-cased
+  country      String?  // a parent's two-letter country code (S11); a child's day follows its parent's
+  username     String?  @unique // children
+  passwordHash String
+  tokenVersion Int      @default(0) // raised to sign every device out
+  leaderboard  Boolean  @default(false) // a parent's setting (rule 23)
+  parentId     String?
+  parent       User?    @relation("Family", fields: [parentId], references: [id], onDelete: Cascade)
+  children     User[]   @relation("Family")
+  tasks        Task[]
+  awards       Award[]
+  quest        Quest?
+  questAwards  QuestAward[]
+  restDays     RestDay[]
+  rewards      Reward[]
+  requestsMade RewardRequest[] @relation("RequestChild")
+  requestsHeld RewardRequest[] @relation("RequestParent")
+  reports      Report[]
+  createdAt    DateTime @default(now())
+
+  @@index([parentId])
+}
+
+model Task {
+  id           String     @id @default(uuid())
+  childId      String
+  child        User       @relation(fields: [childId], references: [id], onDelete: Cascade)
+  category     Category
+  title        String
+  instructions String
+  dueAt        DateTime
+  points       Int
+  status       TaskStatus @default(todo)
+  resultSeen   Boolean    @default(true)
+  pinned       Boolean    @default(false) // the child's chosen next task (rule 22)
+  createdAt    DateTime   // always set from clock.now(), never by the database
+  proofs       Proof[]
+
+  @@index([childId])
+}
+
+/// One attempt at proving a task, with the parent's review of it (rule 10).
+model Proof {
+  id         String        @id // chosen before the file is written: it is the file's name on disk
+  taskId     String
+  task       Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  note       String        @default("")
+  fileName   String?
+  fileType   String?       // decided from the file's bytes
+  fileSize   Int?
+  sentAt     DateTime
+  late       Boolean
+  result     ReviewResult?
+  reviewNote String        @default("")
+  reviewBy   String?
+  reviewedAt DateTime?
+  cheerKind  CheerKind?
+  cheerLine  String        @default("")
+
+  @@index([taskId])
+}
+
+/// A sticker, recorded with the approval that earned it and never taken back (rule 3).
+model Award {
+  childId   String
+  child     User     @relation(fields: [childId], references: [id], onDelete: Cascade)
+  stickerId String
+  earnedAt  DateTime
+  taskId    String   // no relation: the award outlives whatever happens to the task
+  taskTitle String
+
+  @@id([childId, stickerId])
+}
+
+model Quest {
+  childId  String   @id
+  child    User     @relation(fields: [childId], references: [id], onDelete: Cascade)
+  target   Int
+  bonus    Int
+  surprise String?
+  setAt    DateTime
+}
+
+model QuestAward {
+  childId   String
+  child     User     @relation(fields: [childId], references: [id], onDelete: Cascade)
+  week      String   // its Monday, 'YYYY-MM-DD'
+  target    Int
+  bonus     Int
+  surprise  String?
+  earnedAt  DateTime
+  taskId    String
+  taskTitle String
+
+  @@id([childId, week])
+}
+
+model RestDay {
+  childId String
+  child   User   @relation(fields: [childId], references: [id], onDelete: Cascade)
+  day     String // 'YYYY-MM-DD'
+
+  @@id([childId, day])
+}
+
+model Reward {
+  id        String   @id @default(uuid())
+  parentId  String
+  parent    User     @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  title     String
+  cost      Int
+  createdAt DateTime
+
+  @@index([parentId])
+}
+
+model RewardRequest {
+  id          String        @id @default(uuid())
+  childId     String
+  child       User          @relation("RequestChild", fields: [childId], references: [id], onDelete: Cascade)
+  parentId    String
+  parent      User          @relation("RequestParent", fields: [parentId], references: [id], onDelete: Cascade)
+  rewardId    String        // no relation: it may name a reward since deleted
+  title       String
+  cost        Int
+  status      RequestStatus @default(requested)
+  note        String        @default("")
+  requestedAt DateTime
+  answeredBy  String?
+  answeredAt  DateTime?
+
+  @@index([childId])
+  @@index([parentId])
+}
+
+/// Rule 15. byId is cleared when the sender is deleted, so a kept report holds no id of theirs (rule 16).
+model Report {
+  id             String    @id @default(uuid())
+  byId           String?
+  by             User?     @relation(fields: [byId], references: [id], onDelete: SetNull)
+  from           Role
+  details        String
+  sentAt         DateTime
+  item           Json?     // itemOf(): words only, no ids
+  resolutionNote String?
+  resolvedAt     DateTime?
+
+  @@index([byId])
 }

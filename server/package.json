@@ -1,31 +1,27 @@
 {
   "name": "server",
   "version": "1.0.0",
-  "main": "index.js",
+  "type": "module",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "nodemon src/index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "node --watch --env-file=.env src/index.js",
+    "start": "node --env-file=.env src/index.js",
+    "pretest": "node --env-file=.env.test scripts/test-db.js",
+    "test": "node --env-file=.env.test --test --test-concurrency=1 \"test/*.test.js\"",
+    "lint": "oxlint"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "private": true,
   "dependencies": {
     "@prisma/client": "^6.19.3",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
-    "cors": "^2.8.6",
-    "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "express-rate-limit": "^8.6.2",
     "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
-    "morgan": "^1.11.0",
     "multer": "^2.2.0"
   },
   "devDependencies": {
-    "nodemon": "^3.1.14",
+    "oxlint": "^1.91.0",
     "prisma": "^6.19.3"
   }
 }

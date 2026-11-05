@@ -55,7 +55,7 @@ Build cost of each page:
 | `/parent/family` | Family | Parent | The children in the family |
 | `/parent/family/new` | Child form | Parent | Add a child and set their sign-in details |
 | `/parent/family/:childId` | Child form | Parent | Rename a child, reset their password, remove them |
-| `/parent/settings` | Settings | Parent | Name, password, delete the family's data |
+| `/parent/settings` | Settings | Parent | Name, country, password, delete the family's data |
 | `/child` | Today | Child | The next task, the growth band, other tasks, results of reviews |
 | `/child/tasks/:taskId` | Task detail | Child | What to do, when, what it is worth. Sending proof happens here. |
 | `/child/growth` | Growth | Child | Level, XP, points, streak and the history of what was earned |
@@ -237,7 +237,7 @@ No cookie policy is needed: the app sets no advertising or analytics cookies, an
 
 ```
 Landing
-├─ Sign up (parent only: name, email, password, confirms they are the parent or guardian)
+├─ Sign up (parent only: name, email, password, country, confirms they are the parent or guardian)
 │     └─► signed in ──► Overview, first run
 └─ Sign in (email or username, and password)
       ├─ parent ──► Overview        ├─ child ──► Today        ├─ moderator ──► Reports
@@ -419,6 +419,9 @@ The screens depend on these. Each has a working assumption so that building can 
 22. **The chosen next task.** Accepted on 30 October 2026: only the child chooses which task to do next, and only one at a time. The task must be the child's own and still open, meaning to do or sent back; a task that is not theirs is not found, and a task that is not open is refused. Today leads with the chosen task for as long as it is open. The choice clears when proof is sent for that task or the task is deleted. A parent can see which task is chosen: nothing about the child is hidden from the parent.
 23. **Family leaderboard.** Accepted on 30 October 2026: a parent can turn it on, and it is off until then. It appears only on the child's Growth page, and only when the family has two or more children. Each entry is only a child's first name and the number of tasks approved this week (Monday to Sunday, by the week the proof was sent in, as in rule 14), counting only approvals that child has been shown (rule 13). The list is sorted by tasks, most first, then by name. Accepted on 31 October 2026: the name is shown exactly as the parent typed it, with nothing cut from it, so a parent who types a full name shows a full name.
 24. **Streak reminder.** Accepted on 30 October 2026: Today's band shows a reminder only when all four hold: a task is due today, that task is still open, the child has sent no proof today, and today is not a rest day. It is worded as fact, never as guilt.
+25. **Days and time zone.** Accepted on 5 November 2026: the parent picks the family's country at sign-up and can change it in Settings. A family's day is a calendar day in that country's time zone. For a country with more than one time zone it is the capital's, so New York for the United States and Sydney for Australia. The server works out streaks, rest days, quests, the leaderboard and the Monday-to-Sunday week in that zone, whatever the device's time zone. Changing the country counts every past day again in the new zone, so a streak that sat right at midnight can move by a day. The screens still show times in the device's own time zone.
+26. **Sessions.** Assumed (backend phase B1): signing in lasts seven days on that device. Signing out ends it on that device only. A parent who changes their password stays signed in on that device and is signed out everywhere else. Resetting a child's password signs that child out everywhere. Removing a child or deleting the family ends their sessions at once.
+27. **Account limits.** Assumed (backend phase B1): a name is 1 to 60 characters. A parent's password is at least 8 characters and a child's at least 6, and neither may be longer than 72 bytes (72 plain letters, fewer with accents or emoji). Sign-in pauses after 10 wrong tries at one account from one network within 15 minutes, or 50 tries at any accounts from one network. Sign-up pauses after 20 new accounts in an hour from one network. Changing the password or deleting the family pauses after 10 tries in 15 minutes. A pause is refused with a new code, TOO_MANY: "Too many tries. Wait a few minutes, then try again."
 
 ## 13. Implementation order
 
