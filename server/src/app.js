@@ -5,7 +5,7 @@ import multer from 'multer'
 import { who } from './auth.js'
 import { setClockDays } from './clock.js'
 import { ApiError, STATUS, refuse } from './errors.js'
-import { account } from './routes/account.js'
+import { account, signOut } from './routes/account.js'
 import { family } from './routes/family.js'
 import { reports } from './routes/reports.js'
 import { tasks } from './routes/tasks.js'
@@ -24,10 +24,14 @@ app.use('/api', (req, _res, next) => {
   next()
 })
 
-// ponytail: a global offset for one developer; never mounted in production.
+app.delete('/api/session', signOut) // before `who`, which reads the database
+
+// ponytail: a global offset for one developer; never mounted in production. Only a request that carries the header moves it:
+// a proof <img>, <video> or <a> carries none and must not put the clock back.
 if (process.env.NODE_ENV !== 'production') {
   app.use((req, _res, next) => {
-    setClockDays(req.get('x-clock-days'))
+    const days = req.get('x-clock-days')
+    if (days !== undefined) setClockDays(days)
     next()
   })
 }

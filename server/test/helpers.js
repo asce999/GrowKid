@@ -7,6 +7,10 @@ import { db } from '../src/db.js'
 /** Starts the real app on a free port. Returns the API base URL (ending in /api) and close(). */
 export async function start() {
   await mkdir(process.env.UPLOAD_DIR, { recursive: true }) // index.js does this at boot; the tests start app.js directly
+  // GET /reports gives the moderator the oldest 200 waiting reports, and every run leaves some behind (a deleted family's unanswered
+  // reports are kept), so each file starts with none waiting. Only ever in a database named *_test.
+  assert.match(decodeURIComponent(new URL(process.env.DATABASE_URL).pathname), /_test$/)
+  await db.report.deleteMany({ where: { resolvedAt: null } })
   const { default: app } = await import('../src/app.js')
   const server = app.listen(0, '127.0.0.1')
   await once(server, 'listening')
@@ -28,8 +32,8 @@ export function as(base, { ip, days } = {}) {
   const address = ip ?? Array.from({ length: 4 }, () => Math.floor(Math.random() * 254) + 1).join('.')
   let cookie = ''
   const send = async (method, path, body, extra) => {
-    const headers = { 'x-growkid': '1', 'x-forwarded-for': address, ...extra }
-    if (days !== undefined) headers['x-clock-days'] = String(days)
+    // the server keeps the last clock offset it was told (a proof <img> carries none), so every request here names its own: 0 by default
+    const headers = { 'x-growkid': '1', 'x-forwarded-for': address, 'x-clock-days': String(days ?? 0), ...extra }
     if (cookie) headers.cookie = cookie
     if (body !== undefined && !(body instanceof FormData)) {
       headers['content-type'] ??= 'application/json'

@@ -193,7 +193,7 @@ function ResetPassword({ child }) {
           <PasswordField
             startVisible
             label="New password"
-            hint={<Requirement met={!rules.childPassword(password)}>At least 6 characters</Requirement>}
+            hint={<Requirement met={password.length >= 6}>At least 6 characters</Requirement>}
             error={error}
             value={password}
             onChange={(e) => setPassword(e.target.value)}

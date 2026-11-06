@@ -220,7 +220,7 @@ test('the day marks and week starts are the instants those days begin at in the 
   assert.equal(weeks.length, 6)
 })
 
-// ------------------------------------------------------------------ the engagement rules over a snapshot (fake.check.js:77-88 and 108-129)
+// ------------------------------------------------------------------ the engagement rules over a snapshot
 
 const ZONE = 'Asia/Kolkata'
 const NOW = new Date()

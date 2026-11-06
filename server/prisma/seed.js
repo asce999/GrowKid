@@ -1,4 +1,4 @@
-// `npm run seed`: the demo family, copied from client/src/api/fake.js:35-119, for development only.
+// `npm run seed`: the demo family, copied from the stand-in removed in B4, for development only.
 // It refuses unless NODE_ENV is development and refuses when any user exists. It prints counts only, never a password or a hash.
 import { randomUUID } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
@@ -28,7 +28,7 @@ const USERS = [
 
 /**
  * Inserts the demo family through tx and returns the counts and the ids made. Aarav has a few days of history and one approval he has
- * not seen yet; Diya is new. His stickers come from running the award rules over his tasks, with no approval (fake.js:539-545),
+ * not seen yet; Diya is new. His stickers come from running the award rules over his tasks, with no approval,
  * and the quest's target is two more than he has done this week, so it reads "2 to go" whatever weekday the seed runs on.
  */
 export async function insertDemo(tx) {

@@ -10,10 +10,10 @@ import { CHEER_KINDS, MAX_FILE_BYTES, OPEN, checkTask } from '../rules.js'
 import { questCompletedBy, stickers } from '../scoring.js'
 import { asTask } from '../shape.js'
 
-/** Tasks, proof, review and files (plan B2). Mirrors fake.js:322-522 and 802-812. */
+/** Tasks, proof, review and files (plan B2). Ported from the stand-in removed in B4. */
 export const tasks = Router()
 
-/** Which tasks this user may see (fake.js:322-336): a parent's whole family, or a child's own. A moderator sees none. */
+/** Which tasks this user may see: a parent's whole family, or a child's own. A moderator sees none. */
 export function visible(req) {
   const me = signedIn(req)
   if (me.role === 'child') return { childId: me.id }
@@ -149,7 +149,7 @@ tasks.get('/proofs/:id/file', async (req, res) => {
 // ------------------------------------------------------------------ review
 
 /**
- * An approval (fake.js:495-507, recordAwards): completes the child's quest for the week the proof was sent in when it reaches the
+ * An approval (recordAwards): completes the child's quest for the week the proof was sent in when it reaches the
  * target, from the quest as it is now and before the stickers are worked out, so a quest sticker belongs to this same approval.
  * Then records every sticker the child now has and did not. Runs inside the review's transaction, after the task is approved.
  */

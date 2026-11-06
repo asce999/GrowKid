@@ -6,11 +6,13 @@
  *
  * It has no other imports, so the rules that depend on it can be run by `npm run check`.
  */
-let offset = 0
+let days = 0
 if (import.meta.env?.DEV && typeof sessionStorage !== 'undefined') {
   const asked = new URLSearchParams(window.location.search).get('clock')
   if (asked !== null) sessionStorage.setItem('growkid.clock', asked)
-  offset = (Number(sessionStorage.getItem('growkid.clock')) || 0) * 86_400_000
+  days = Number(sessionStorage.getItem('growkid.clock')) || 0
 }
 
-export const now = () => new Date(Date.now() + offset)
+export const now = () => new Date(Date.now() + days * 86_400_000)
+/** How many days ahead (or behind) the clock is: 0 in production. Development sends it to the server as X-Clock-Days. */
+export const daysAhead = () => days

@@ -1,13 +1,34 @@
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import * as api from '../api/index.js'
 import { Field, PasswordField, Requirement } from '../components/Field.jsx'
 import { AuthShell } from '../components/Shells.jsx'
 import { Message } from '../components/states.jsx'
+import { useLoad } from '../hooks/useLoad.js'
 import { useSession } from '../store/session.js'
 import { focusFirstInvalid, submitProblem } from '../utils/forms.js'
 import { rules } from '../utils/rules.js'
 
 // Only parents sign up (decision D1). A new parent is signed in and lands on Overview.
+
+/**
+ * A time zone's one name. Browsers that fold aliases make Asia/Calcutta and Asia/Kolkata compare equal; where one does not, or does
+ * not know a name at all (RangeError), the name stays as given: nothing is pre-selected and the parent chooses.
+ */
+function zoneName(timeZone) {
+  try {
+    return new Intl.DateTimeFormat('en', { timeZone }).resolvedOptions().timeZone
+  } catch {
+    return timeZone
+  }
+}
+
+/** The code of the one country whose time zone is this device's, or '' when none or several are (rule 25). */
+function countryHere(countries) {
+  const here = zoneName(undefined)
+  const found = countries.filter((c) => zoneName(c.zone) === here)
+  return found.length === 1 ? found[0].code : ''
+}
 
 const WHAT_HAPPENS = (
   <dl className="grid gap-5">
@@ -24,13 +45,18 @@ const WHAT_HAPPENS = (
 
 export default function SignUp() {
   const signUp = useSession((s) => s.signUp)
-  const [values, setValues] = useState({ name: '', email: '', password: '' })
+  const countries = useLoad(api.listCountries)
+  // null until they choose: then the country this device is in, if there is just one
+  const [values, setValues] = useState({ name: '', email: '', password: '', country: null })
+  const guess = useMemo(() => (countries.data ? countryHere(countries.data) : ''), [countries.data])
+  const country = values.country ?? guess
   const [isParent, setIsParent] = useState(false)
   const [tried, setTried] = useState(false)
   const [takenEmail, setTakenEmail] = useState(null)
   const [problem, setProblem] = useState(null)
   const [busy, setBusy] = useState(false)
   const form = useRef(null)
+  const select = useRef(null)
 
   const set = (field) => (event) => setValues((v) => ({ ...v, [field]: event.target.value }))
   const errors = {
@@ -41,6 +67,11 @@ export default function SignUp() {
         ? 'That email already has an account. Sign in instead, or use another email.'
         : null),
     password: rules.parentPassword(values.password),
+    country: country
+      ? null
+      : countries.status === 'ready'
+        ? 'Choose the country you live in.'
+        : 'Wait for the list of countries, then choose one.',
     isParent: isParent ? null : 'Tick this to confirm you are the parent or guardian.',
   }
   const shown = (field) => (tried || (field === 'email' && takenEmail) ? errors[field] : null)
@@ -52,7 +83,7 @@ export default function SignUp() {
     if (Object.values(errors).some(Boolean)) return focusFirstInvalid(form.current)
     setBusy(true)
     try {
-      await signUp(values) // the route guard then sends them to Overview
+      await signUp({ ...values, country }) // the route guard then sends them to Overview
     } catch (error) {
       if (error.code === 'EMAIL_TAKEN') setTakenEmail(values.email.trim().toLowerCase())
       else setProblem(submitProblem(error))
@@ -92,13 +123,46 @@ export default function SignUp() {
         />
         <PasswordField
           label="Password"
-          hint={<Requirement met={!errors.password}>At least 8 characters</Requirement>}
+          hint={<Requirement met={values.password.length >= 8}>At least 8 characters</Requirement>}
           error={shown('password')}
           value={values.password}
           onChange={set('password')}
           name="password"
           autoComplete="new-password"
         />
+        <Field
+          as="select"
+          label="Country"
+          hint="Each day starts and ends by the clock in this country. You can change it later in Settings."
+          error={shown('country')}
+          value={country}
+          onChange={set('country')}
+          name="country"
+          autoComplete="country"
+          ref={select}
+        >
+          <option value="">{countries.status === 'loading' ? 'Loading countries…' : 'Choose a country'}</option>
+          {countries.data?.map((c) => (
+            <option key={c.code} value={c.code}>
+              {c.name}
+            </option>
+          ))}
+        </Field>
+        {countries.status === 'error' && (
+          <Message tone="danger" alert>
+            The list of countries did not load.{' '}
+            <button
+              type="button"
+              className="btn btn-text min-h-0 px-1"
+              onClick={() => {
+                countries.reload()
+                select.current?.focus()
+              }}
+            >
+              Try again
+            </button>
+          </Message>
+        )}
 
         <div className="grid gap-2">
           <label className="flex items-start gap-3">

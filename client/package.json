@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "oxlint",
-    "check": "node src/utils/tasks.check.js && node src/api/scoring.check.js && node src/api/fake.check.js",
+    "check": "node src/utils/tasks.check.js && node src/api/errors.check.js",
     "preview": "vite preview"
   },
   "dependencies": {

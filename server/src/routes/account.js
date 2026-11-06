@@ -7,7 +7,7 @@ import { invalid, refuse, text } from '../errors.js'
 import { removeFiles } from '../files.js'
 import { asChild, asUser } from '../shape.js'
 
-/** Accounts and the family (plan B1): sessions, sign-up, the parent's own settings and password, and the children. Mirrors fake.js:186-318. */
+/** Accounts and the family (plan B1): sessions, sign-up, the parent's own settings and password, and the children. Ported from the stand-in removed in B4. */
 export const account = Router()
 
 // A3: names are 1 to 60 characters after trimming; passwords are at least `min` and at most 72 bytes (the bcrypt limit).
@@ -32,11 +32,14 @@ account.post('/session', signInIpLimit, signInLimit, async (req, res) => {
   res.json(asUser(user))
 })
 
-/** signOut: ends the session on this device only. */
-account.delete('/session', (_req, res) => {
+/**
+ * signOut: ends the session on this device only. It needs no database, so app.js registers it before `who`: a device can sign
+ * out while the database is down.
+ */
+export const signOut = (_req, res) => {
   clear(res)
   res.status(204).end()
-})
+}
 
 /** signUp: a new parent and family, signed in. Rule 25: the country picks the family's time zone. A taken email surfaces as P2002 from the unique insert. */
 account.post('/parents', signUpLimit, async (req, res) => {
@@ -90,7 +93,7 @@ account.put('/me/password', passwordLimit, async (req, res) => {
 })
 
 /**
- * Removes these users and everything held for them (rule 16, fake.js:266-280). Their answered reports go; an unanswered one stays with
+ * Removes these users and everything held for them (rule 16). Their answered reports go; an unanswered one stays with
  * byId cleared by the database (SetNull); every other table follows by cascade. The proof files go last, once the rows are gone.
  * One transaction holds the users' row locks from the file list to the delete, so a proof sent meanwhile (B2's sendProof takes the
  * same lock through lockChild) either lands in the list or finds the child gone.

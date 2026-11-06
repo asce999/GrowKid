@@ -31,7 +31,8 @@ for (const [name, changes, variable] of broken) {
   })
 }
 
-test('boot succeeds with a good environment (control for the cases above)', { timeout: 20_000 }, async () => {
+test('boot succeeds with a good environment (control for the cases above) and seeds no demo family', { timeout: 20_000 }, async () => {
+  const users = await db.user.count()
   const child = spawn(process.execPath, [entry], { env: { ...process.env, PORT: '0' } })
   let out = ''
   const listening = new Promise((done, fail) => {
@@ -40,7 +41,36 @@ test('boot succeeds with a good environment (control for the cases above)', { ti
   })
   try {
     await listening
+    assert.equal(await db.user.count(), users) // starting the server writes nothing: the demo family comes only from `npm run seed`
   } finally {
+    child.kill()
+  }
+})
+
+test('production mode: the session cookie is Secure, and an X-Clock-Days header moves nothing', { timeout: 30_000 }, async () => {
+  const child = spawn(process.execPath, [entry], { env: { ...process.env, NODE_ENV: 'production', PORT: '0' } })
+  let out = ''
+  const listening = new Promise((done, fail) => {
+    child.stdout.on('data', (chunk) => {
+      const found = /listening on 127\.0\.0\.1:(\d+)/.exec((out += chunk))
+      if (found) done(found[1])
+    })
+    child.on('exit', (code) => fail(new Error(`exited with ${code}`)))
+  })
+  let reportId
+  const password = 'parent-pass-1'
+  const parent = as(`http://127.0.0.1:${await listening}/api`, { days: 30 }) // asks for a month ahead on every request
+  try {
+    const signUp = await parent.post('/parents', { name: 'Prod Parent', email: `prod-${randomUUID()}@example.com`, password, country: 'IN' })
+    assert.equal(signUp.status, 201)
+    assert.ok(signUp.headers.getSetCookie().some((cookie) => /;\s*Secure(;|$)/i.test(cookie)), 'the cookie is Secure')
+    const report = await parent.post('/reports', { details: 'Which day is it?' })
+    assert.equal(report.status, 201)
+    reportId = report.body.id
+    assert.ok(Math.abs(new Date(report.body.sentAt) - Date.now()) < 5 * 60_000, 'the stored time is now, not 30 days ahead')
+  } finally {
+    await parent.post('/me/delete', { password }) // the family goes; its unanswered report is kept without a sender, so that goes by id
+    if (reportId) await db.report.deleteMany({ where: { id: reportId } })
     child.kill()
   }
 })

@@ -89,3 +89,5 @@ export const signInLimit = limit(
 export const signUpLimit = limit(60, 20, (req) => ipKeyGenerator(req.ip))
 /** 10 tries per 15 minutes for one user, counting change-password and delete-family together: both are ways to guess the password. */
 export const passwordLimit = limit(15, 10, (req) => req.user?.id ?? ipKeyGenerator(req.ip))
+/** 10 reports sent per hour for one user; refused tries do not count. A signed-out visitor falls back to the address. */
+export const reportLimit = limit(60, 10, (req) => req.user?.id ?? ipKeyGenerator(req.ip), { skipFailedRequests: true })

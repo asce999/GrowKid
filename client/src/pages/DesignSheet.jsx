@@ -38,6 +38,7 @@ const COLOURS = [
 
 const TYPE = [
   { role: 'type-display', use: 'Child page titles and celebrations', sample: 'Level 8 reached' },
+  { role: 'type-headline', use: 'Headlines on the public pages', sample: 'Tasks done at home' },
   { role: 'type-game', use: 'Level, XP, points and streak numbers', sample: '650 of 1,000 XP' },
   { role: 'type-heading', use: 'Parent page titles and section headings', sample: 'Tasks this week' },
   { role: 'type-subheading', use: 'Card and dialog titles', sample: 'Water the balcony plants' },

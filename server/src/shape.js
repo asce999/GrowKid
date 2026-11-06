@@ -50,7 +50,7 @@ export const asTask = (row, { files = false } = {}) => ({
 /** A Reward as index.js documents it. */
 export const asReward = ({ id, title, cost }) => ({ id, title, cost })
 
-/** A RewardRequest row read with its child's name (`include: { child: { select: { name: true } } }`): without the parent's id (fake.js:690-693). */
+/** A RewardRequest row read with its child's name (`include: { child: { select: { name: true } } }`): without the parent's id. */
 export const asRequest = (row) => ({
   id: row.id,
   childId: row.childId,
@@ -66,7 +66,7 @@ export const asRequest = (row) => ({
 
 /**
  * What a report keeps of the task it was sent from, copied at that moment so that a later edit or delete cannot change what was
- * reported (fake.js:842-849). Words only: the task as the parent wrote it and the notes the parent sent proof back with. Never a
+ * reported. Words only: the task as the parent wrote it and the notes the parent sent proof back with. Never a
  * proof file, a child's note, an id or anybody's name. Takes a task as asTask gives it.
  */
 export const itemOf = (task) => ({

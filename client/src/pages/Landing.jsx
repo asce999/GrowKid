@@ -18,8 +18,8 @@ import { STICKER_ICONS } from '../utils/stickers.js'
 
 // ------------------------------------------------------------------ 1. the opening
 
-// ponytail: these four are copied from the sticker chart (api/scoring.js), which pages may not
-// import, and so are "3 of 14" and "Fourteen to collect" below. scoring.check.js asserts there are 14;
+// ponytail: these four are copied from the sticker chart (server/src/scoring.js), which pages may not
+// import, and so are "3 of 14" and "Fourteen to collect" below. server/test/scoring.test.js asserts there are 14;
 // if a name, a shape or the count changes there, change it here.
 const EXAMPLE_STICKERS = [
   { name: 'First task', shape: 'seal', tone: 'sun', tilt: -6 },
@@ -65,8 +65,8 @@ function Opening() {
   return (
     <section className="grid items-center gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,28rem)] lg:gap-16" aria-labelledby="opening-title">
       <div>
-        {/* DESIGN.md section 6 keeps Baloo 2 for the game and child page titles, so the headline is the Heading role */}
-        <h1 id="opening-title" className="text-navy-800">
+        {/* DESIGN.md section 6 keeps Baloo 2 for the game and child page titles, so the headline is the Headline role: Lexend */}
+        <h1 id="opening-title" className="type-headline text-navy-800">
           Tasks done at home. Growth you can see.
         </h1>
         <p className="type-body-child mt-4 max-w-prose">
@@ -265,9 +265,10 @@ function Safety() {
         ))}
       </dl>
       <p className="mt-6 max-w-prose">
-        GrowKid is still being built. For now it keeps everything in this browser, and there is no server.{' '}
+        GrowKid is still being built. Everything a family adds is kept on the GrowKid server, and proof photos are seen only by the child
+        and their parent.{' '}
         <Link to="/privacy" className="font-medium text-navy-800 underline underline-offset-4">
-          Read what that means, on Safety and privacy
+          Read more on Safety and privacy
         </Link>
         .
       </p>

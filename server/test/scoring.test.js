@@ -1,9 +1,9 @@
-// The runnable check of the award rules: `npm run check`. A wrong award is the bug a child
+// The runnable check of the award rules: `npm test` in server/. A wrong award is the bug a child
 // would notice first, so each rule has a line here that fails if it breaks.
 import assert from 'node:assert/strict'
 import {
   STICKERS, approvedInWeek, balanceOf, dayKey, progress, questCompletedBy, questOf, recordOf, score, stickers, weekKey,
-} from './scoring.js'
+} from '../src/scoring.js'
 
 const NOW = new Date(2026, 9, 20, 15, 0) // a Tuesday afternoon; days below count back from it
 const at = (daysAgo, hour = 12) => new Date(2026, 9, 20 - daysAgo, hour).toISOString()

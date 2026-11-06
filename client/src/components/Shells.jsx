@@ -88,11 +88,27 @@ function useCount(ask_) {
 /** Always one tap away, because a parent and a child often share one device. */
 function SignOut({ className }) {
   const signOut = useSession((s) => s.signOut)
+  const [failed, setFailed] = useState(false)
+  const [busy, setBusy] = useState(false)
+  function press() {
+    if (busy) return
+    setBusy(true)
+    setFailed(false) // so a repeated failure is announced again
+    signOut()
+      .catch(() => setFailed(true))
+      .finally(() => setBusy(false))
+  }
+  // aria-disabled, never disabled: the focus has to stay on the button
   return (
-    <button type="button" className={className} onClick={signOut}>
-      <LogOut className="size-5 shrink-0" aria-hidden="true" />
-      Sign out
-    </button>
+    <>
+      <button type="button" className={className} aria-disabled={busy ? 'true' : undefined} onClick={press}>
+        <LogOut className="size-5 shrink-0" aria-hidden="true" />
+        {failed ? 'Retry sign out' : 'Sign out'}
+      </button>
+      <span className="sr-only" role="alert">
+        {failed && 'Not signed out. Check your connection and try again.'}
+      </span>
+    </>
   )
 }
 
@@ -247,7 +263,7 @@ export function PublicShell() {
   const user = useSession((s) => s.user)
   return (
     <div className="min-h-page flex flex-col">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b bg-white py-2 pr-2 pl-4">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b bg-white px-4 py-2">
         <Link to="/">
           <Logo />
         </Link>

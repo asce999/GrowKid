@@ -7,13 +7,13 @@ import { invalid, refuse, text } from '../errors.js'
 import { checkQuest, dayKeyIn, growthForChild, growthOf, isDay, leaderboardOf, progressOf, recentRest, screen, stickerList } from '../rules.js'
 import { asChild, asRequest, asReward } from '../shape.js'
 
-/** Growth, rewards, requests, quests, rest days and the leaderboard (plan B3, rules 13 and 17 to 24). Mirrors fake.js:524-833. */
+/** Growth, rewards, requests, quests, rest days and the leaderboard (plan B3, rules 13 and 17 to 24). Ported from the stand-in removed in B4. */
 export const family = Router()
 
 /** What a request is read with, so shape.js's asRequest has the child's name. */
 const requestWith = { child: { select: { name: true } } }
 
-/** The parent whose family the signed-in parent or child belongs to (fake.js:650-655). A moderator has none. */
+/** The parent whose family the signed-in parent or child belongs to. A moderator has none. */
 function familyOf(req) {
   const me = signedIn(req)
   if (me.role === 'moderator') refuse('NOT_ALLOWED')
@@ -72,7 +72,7 @@ family.get('/rewards', async (req, res) => {
   res.json(rows.map(asReward))
 })
 
-/** saveReward: a new reward when `id` is missing or empty (fake.js:666-680); otherwise the parent's own with that id, or NOT_FOUND. */
+/** saveReward: a new reward when `id` is missing or empty; otherwise the parent's own with that id, or NOT_FOUND. */
 family.post('/rewards', async (req, res) => {
   const me = only(req, 'parent')
   const body = req.body ?? {}

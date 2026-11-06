@@ -1,19 +1,20 @@
 import { Router } from 'express'
-import { only, signedIn } from '../auth.js'
+import { only, reportLimit, signedIn } from '../auth.js'
 import { now } from '../clock.js'
 import { db, lockChild, taskWith } from '../db.js'
 import { invalid, refuse, text } from '../errors.js'
 import { asReport, asTask, itemOf } from '../shape.js'
 import { visible } from './tasks.js'
 
-/** Reports to the moderator (plan B3, rules 15 and 16). Mirrors fake.js:837-895. */
+/** Reports to the moderator (plan B3, rules 15 and 16). Ported from the stand-in removed in B4. */
 export const reports = Router()
 
 /**
- * sendReport (A10): straight to the moderator's list. No parent is asked, told or shown, and the moderator has no power beyond
- * answering. A task the sender cannot see is left out without a word, and the report still goes.
+ * sendReport (A10): straight to the moderator's list, at most 10 sent an hour from one user (reportLimit; refused ones do not count).
+ * No parent is asked, told or shown, and the moderator has no power beyond answering. A task the sender cannot see is left out without a word, and the report
+ * still goes.
  */
-reports.post('/reports', async (req, res) => {
+reports.post('/reports', reportLimit, async (req, res) => {
   const me = signedIn(req)
   if (me.role === 'moderator') refuse('NOT_ALLOWED')
   const body = req.body ?? {}
@@ -35,13 +36,13 @@ reports.get('/reports/mine', async (req, res) => {
 })
 
 /**
- * listReports: the reports still waiting for an answer, oldest first, for the moderator. The page shows no answered report
+ * listReports: the oldest 200 reports still waiting for an answer, oldest first, for the moderator. The page shows no answered report
  * (Reports.jsx lists only those without a resolution), so an answered one is not sent again on every poll: the sender reads it
  * through listMyReports instead.
  */
 reports.get('/reports', async (req, res) => {
   only(req, 'moderator')
-  const rows = await db.report.findMany({ where: { resolvedAt: null }, orderBy: [{ sentAt: 'asc' }, { id: 'asc' }] })
+  const rows = await db.report.findMany({ where: { resolvedAt: null }, orderBy: [{ sentAt: 'asc' }, { id: 'asc' }], take: 200 })
   res.json(rows.map((row) => asReport(row, { moderator: true })))
 })
 

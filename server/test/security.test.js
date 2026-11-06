@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
 import { after, before, test } from 'node:test'
+import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { who } from '../src/auth.js'
+import { db } from '../src/db.js'
 import { as, family, start } from './helpers.js'
 
 let server
@@ -97,4 +100,34 @@ test('a forged, tampered, stale or expired session cookie is not signed in; the 
   assert.equal(await session(genuine), null, 'older tokenVersion')
   const renewed = jwt.sign({ ...claims, v: 1 }, secret, { algorithm: 'HS256', expiresIn: '7d' })
   assert.equal((await session(renewed))?.id, mom.user.id)
+})
+
+test('a moderator gets nothing outside reports: every other route is NOT_ALLOWED to them and NOT_SIGNED_IN to a visitor', async () => {
+  const email = `mod-${randomUUID()}@example.com`
+  const { id: moderatorId } = await db.user.create({ data: { role: 'moderator', name: 'Mod', email, passwordHash: await bcrypt.hash('moderator-pass', 4) } })
+  try {
+    const moderator = as(server.base)
+    assert.equal((await moderator.post('/session', { identifier: email, password: 'moderator-pass' })).status, 200)
+    const x = randomUUID() // an id of nothing: the role is refused before the thing is looked for
+    const routes = [
+      ['get', '/tasks'], ['get', `/tasks/${x}`], ['get', `/proofs/${x}/file`], ['get', '/counts/proofs'], ['get', '/counts/results'], ['get', '/counts/requests'],
+      ['get', '/children'], ['get', `/children/${x}`], ['get', `/children/${x}/progress`], ['get', `/children/${x}/rest-days`],
+      ['get', '/growth'], ['get', '/growth/children'], ['get', '/stickers'], ['get', '/leaderboard'], ['get', '/rewards'], ['get', '/requests'], ['get', '/settings'],
+      ['post', '/tasks'], ['post', `/tasks/${x}/proofs`], ['post', `/tasks/${x}/review`], ['post', '/tasks/seen'], ['post', '/children'], ['post', `/children/${x}/rest-days`],
+      ['post', '/rewards'], ['post', '/requests'], ['post', `/requests/${x}/answer`], ['post', '/me/delete'], ['post', '/reports'],
+      ['put', `/tasks/${x}`], ['put', '/pin'], ['put', `/children/${x}/password`], ['put', `/children/${x}/quest`], ['put', '/me/password'], ['put', '/settings'], ['put', '/settings/country'],
+      ['patch', '/me'], ['patch', `/children/${x}`], ['del', `/tasks/${x}`], ['del', `/children/${x}`], ['del', `/rewards/${x}`],
+    ]
+    for (const [method, path] of routes) {
+      for (const [visitor, status, code] of [[moderator, 403, 'NOT_ALLOWED'], [api, 401, 'NOT_SIGNED_IN']]) {
+        const res = await visitor[method](path)
+        assert.deepEqual([res.status, res.body], [status, { code }], `${method} ${path}`)
+      }
+    }
+    // what a moderator may do: read and answer reports, and read their own (none)
+    assert.equal((await moderator.get('/reports')).status, 200)
+    assert.deepEqual((await moderator.get('/reports/mine')).body, [])
+  } finally {
+    await db.user.delete({ where: { id: moderatorId } })
+  }
 })

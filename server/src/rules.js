@@ -2,7 +2,7 @@ import { now } from './clock.js'
 import { invalid, refuse, text } from './errors.js'
 import { STICKERS, approvedInWeek, balanceOf, dayKey, progress, questOf, recordOf, score, weekKey } from './scoring.js'
 
-/** The rules a handler checks by value, ported from fake.js:25-33 and 364-382. The award rules are in scoring.js. */
+/** The rules a handler checks by value, ported from the stand-in removed in B4. The award rules are in scoring.js. */
 
 // Rule 5, proof files: one photo, video or PDF of up to 25 MB, or a note with no file. The seven types are files.js's sniff table.
 export const MAX_FILE_BYTES = 25 * 1024 * 1024
@@ -45,7 +45,7 @@ export function checkTask(body, before) {
   return { category, title, instructions: instructions.trim(), dueAt, points }
 }
 
-// ------------------------------------------------------------------ the engagement rules (17 to 24), ported from fake.js:524-833
+// ------------------------------------------------------------------ the engagement rules (17 to 24), ported from the stand-in removed in B4
 // Pure functions over the snapshot loadChild gives (plan section 7), with the time passed in. Every day question uses
 // snapshot.zone, the family's zone (rule 25), never the server's own.
 
@@ -74,7 +74,7 @@ const notShown = (t) => (t.status === 'approved' && !t.resultSeen ? { ...t, stat
  * A child's score by the award rules (rules 3, 13, 17, 19), and beside it the score as the child has been shown it: an approval not
  * yet seen on Today still counts as waiting there, and so does a quest completed with it. balance is what the child can spend; the
  * child's own, in shown, is what a request is checked against. A quest carries its surprise and whether it is sealed for a parent,
- * who always reads it; growthForChild takes it back for the child. fake.js:554-577.
+ * who always reads it; growthForChild takes it back for the child.
  */
 export function growthOf(snapshot, time) {
   const { zone, tasks, rest, quest: def, questAwards: awards, requests } = snapshot
@@ -102,7 +102,7 @@ export function growthOf(snapshot, time) {
 /**
  * A quest as a child may read it (rule 19). The surprise stays sealed until the week's quest is complete and they have seen it.
  * After that it reads as the award does: a parent who changes the quest later in the week is setting up a later week, so nothing
- * of the change opens early. fake.js:584-589.
+ * of the change opens early.
  */
 function questForChild(quest, award) {
   if (!quest) return quest
@@ -111,7 +111,7 @@ function questForChild(quest, award) {
   return { ...quest, target, bonus, done: target, surprise, sealed: false }
 }
 
-/** Growth as a child is given it (fake.js:592-597). */
+/** Growth as a child is given it. */
 export function growthForChild(snapshot, time) {
   const growth = growthOf(snapshot, time)
   const { completed, week } = growth.shown.quest ?? {} // shown only counts the quests the child has seen
@@ -119,7 +119,7 @@ export function growthForChild(snapshot, time) {
   return { ...growth, quest: questForChild(growth.quest, award), shown: { ...growth.shown, quest: questForChild(growth.shown.quest, award) } }
 }
 
-/** The sticker chart for the child (rule 13, fake.js:608-620): earned and seen ones in full, the rest with how far along they are. */
+/** The sticker chart for the child (rule 13): earned and seen ones in full, the rest with how far along they are. */
 export function stickerList(snapshot, time) {
   const { zone, tasks, rest, questAwards, awards } = snapshot
   const seenAwards = questAwards.filter((a) => awardSeen(snapshot, a))
@@ -133,7 +133,7 @@ export function stickerList(snapshot, time) {
   })
 }
 
-/** One child's progress for their parent (rule 14): the real score, the weeks, the calendar, the counts and the stickers. fake.js:626-644. */
+/** One child's progress for their parent (rule 14): the real score, the weeks, the calendar, the counts and the stickers. */
 export function progressOf({ zone, tasks, rest, awards }, child, time) {
   const open = tasks.filter((t) => OPEN.includes(t.status))
   return {
@@ -151,7 +151,7 @@ export function progressOf({ zone, tasks, rest, awards }, child, time) {
 }
 
 /**
- * The leaderboard (rule 23, fake.js:814-824): entries are { child: { id, name }, snapshot } for every sibling. Only approvals each
+ * The leaderboard (rule 23): entries are { child: { id, name }, snapshot } for every sibling. Only approvals each
  * child has been shown count (rule 13), so no one learns of a sibling's result before they do. The week is the family's.
  */
 export const leaderboardOf = (entries, meId, time) =>
@@ -162,7 +162,7 @@ export const leaderboardOf = (entries, meId, time) =>
     .sort((a, b) => b.tasks - a.tasks || a.name.localeCompare(b.name))
 
 /**
- * Rule 19, setQuest (fake.js:749-768): INVALID with every wrong field, then SCREENED. A quest already reached this week would show as
+ * Rule 19, setQuest: INVALID with every wrong field, then SCREENED. A quest already reached this week would show as
  * full and never pay, because a quest completes on an approval. Returns the quest to store.
  */
 export function checkQuest(def, { zone, tasks, questAwards }, time) {

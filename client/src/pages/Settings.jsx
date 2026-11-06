@@ -11,7 +11,7 @@ import { focusFirstInvalid } from '../utils/forms.js'
 import { errorText } from '../utils/messages.js'
 import { rules } from '../utils/rules.js'
 
-// The parent's own account: name, password, the family leaderboard switch, and deleting the
+// The parent's own account: name, password, country, the family leaderboard switch, and deleting the
 // family's data. Short and plain (DESIGN.md section 12, principle 9). Deleting is the most destructive thing in the product, so
 // it says exactly what goes and asks for the password; it is not dressed up as a danger zone.
 
@@ -105,7 +105,7 @@ function Password() {
       />
       <PasswordField
         label="New password"
-        hint={<Requirement met={!errors.next}>At least 8 characters</Requirement>}
+        hint={<Requirement met={values.next.length >= 8}>At least 8 characters</Requirement>}
         error={state.tried ? errors.next : null}
         value={values.next}
         onChange={change('next')}
@@ -123,6 +123,65 @@ function Password() {
       )}
       <button className="btn btn-secondary justify-self-start" disabled={state.busy}>
         {state.busy ? 'Changing…' : 'Change password'}
+      </button>
+    </form>
+  )
+}
+
+/** The family's country (rule 25). Each day follows its clock, so changing it counts past days again. */
+function Country({ settings, countries }) {
+  const [country, setCountry] = useState(settings.country ?? '')
+  const [state, setState] = useState({})
+
+  async function submit(event) {
+    event.preventDefault()
+    if (!country) {
+      focusFirstInvalid(event.currentTarget)
+      return setState({ tried: true })
+    }
+    setState({ busy: true })
+    try {
+      setCountry((await api.setCountry(country)).country)
+      setState({ saved: true })
+    } catch (failure) {
+      setState({ problem: errorText(noticeExpiry(failure)) })
+    }
+  }
+
+  return (
+    <form className="grid max-w-md gap-4" onSubmit={submit} noValidate>
+      <Field
+        as="select"
+        label="Your country"
+        hint="Each day starts and ends by the clock in this country. If you change it, past days are counted again, so a streak or a quest week can change."
+        error={state.tried && !country ? 'Choose the country you live in.' : null}
+        value={country}
+        onChange={(e) => {
+          setCountry(e.target.value)
+          setState((s) => ({ tried: s.tried, busy: s.busy })) // a save in flight stays busy
+        }}
+        name="country"
+        autoComplete="country"
+      >
+        {!country && <option value="">Choose a country</option>}
+        {countries.map((c) => (
+          <option key={c.code} value={c.code}>
+            {c.name}
+          </option>
+        ))}
+      </Field>
+      {state.problem && (
+        <Message tone="danger" alert>
+          {state.problem}
+        </Message>
+      )}
+      {state.saved && (
+        <Message tone="success" role="status">
+          Country saved.
+        </Message>
+      )}
+      <button className="btn btn-secondary justify-self-start" disabled={state.busy}>
+        {state.busy ? 'Saving…' : 'Save country'}
       </button>
     </form>
   )
@@ -267,7 +326,7 @@ function DeleteFamily({ user, family }) {
 
 export default function Settings() {
   const user = useSession((s) => s.user)
-  const loaded = useLoad(() => Promise.all([api.listChildren(), api.getSettings()]))
+  const loaded = useLoad(() => Promise.all([api.listChildren(), api.getSettings(), api.listCountries()]))
   if (!user) return null // deleted a moment ago, and on the way to Landing
 
   return (
@@ -296,6 +355,12 @@ export default function Settings() {
               Password
             </h2>
             <Password />
+          </section>
+          <section className="mt-8 border-t pt-6" aria-labelledby="country-title">
+            <h2 id="country-title" className="type-subheading mb-4">
+              Country
+            </h2>
+            <Country settings={loaded.data[1]} countries={loaded.data[2]} />
           </section>
           <section className="mt-8 border-t pt-6" aria-labelledby="leaderboard-title">
             <h2 id="leaderboard-title" className="type-subheading mb-4">

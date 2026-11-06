@@ -96,6 +96,16 @@
     line-height: 2.75rem;
   }
 }
+@utility type-headline {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 2rem;
+  line-height: 2.25rem;
+  @variant sm {
+    font-size: 2.5rem;
+    line-height: 2.75rem;
+  }
+}
 @utility type-game {
   font-family: var(--font-display);
   font-weight: 700;

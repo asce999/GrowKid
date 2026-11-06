@@ -44,18 +44,18 @@ const sendReport = async (who, body) => {
 /** The moderator's copy of one report, from the list of those waiting. */
 const seenByModerator = async (id) => (await moderator.get('/reports')).body.find((r) => r.id === id)
 
-async function addChild(mom, name = 'Kid') {
+async function addChild(mom, name = 'Kid', ip) {
   const sent = { name, username: `k${randomUUID().slice(0, 8)}`, password: 'kid-pass-1' }
   const res = await mom.api.post('/children', sent)
   assert.equal(res.status, 201)
-  const api = as(server.base)
+  const api = as(server.base, { ip })
   assert.equal((await api.post('/session', { identifier: sent.username, password: sent.password })).status, 200)
   return { ...res.body, api }
 }
-async function household(name) {
+async function household(name, ip) {
   const mom = await family(server.base)
   made.push(mom)
-  return { mom, kid: await addChild(mom, name) }
+  return { mom, kid: await addChild(mom, name, ip) }
 }
 /**
  * A task whose proof was sent back with a note and sent again with a file and a note of the child's own: the parent's words, the
@@ -209,6 +209,22 @@ test('two answers at once to a report with no sender give one 200; the other fin
     assert.ok([404, 409].includes(lost.status) && ['NOT_FOUND', 'LOCKED'].includes(lost.body.code), `round ${round}`)
     assert.equal(await db.report.count({ where: { id: orphan.id } }), 0)
   }
+})
+
+test('the 11th report from one user within the hour is refused TOO_MANY; another user is not held up, and nothing was stored for the 11th', async () => {
+  const ip = '203.0.113.7' // both children send from one address, so a limit per address would hold the second one up too
+  const { kid } = await household('Kid', ip)
+  const other = await household('Other', ip)
+  for (let n = 1; n <= 10; n++) assert.equal((await sendReport(kid, { details: `Report ${n}.` })).status, 201, `report ${n}`)
+  refused(await sendReport(kid, { details: 'Report 11.' }), 429, 'TOO_MANY')
+  assert.equal(await db.report.count({ where: { byId: kid.id } }), 10)
+  assert.equal((await sendReport(other.kid, { details: 'Mine.' })).status, 201) // the count is per user, not per address or per family
+})
+
+test('refused reports do not count toward the limit: 10 refused as INVALID, and a valid one still goes', async () => {
+  const { kid } = await household('Kid')
+  for (let n = 1; n <= 10; n++) invalid(await sendReport(kid, { details: '' }), { details: 'required' })
+  assert.equal((await sendReport(kid, { details: 'Now a real one.' })).status, 201)
 })
 
 test('a request with no body at all gets the normal refusal, never a 500 (Express 5 leaves req.body undefined)', async () => {

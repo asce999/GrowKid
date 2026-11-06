@@ -1,9 +1,11 @@
 /**
  * The GrowKid API as the frontend sees it. Pages and stores call only these functions.
  *
- * Today ./fake.js answers them, because server/ has no code yet. The backend phase replaces the
- * right-hand side of each export with an HTTP call and keeps the names, the shapes and the
- * failures. Every function is async and rejects with an ApiError (see ./errors.js).
+ * Each one is an HTTP call to the GrowKid server under /api (the paths are in server/src/routes/).
+ * Every function is async and rejects with an ApiError (see ./errors.js).
+ *
+ * In development only, ?dev=slow|fail|offline|ok (per tab) simulates a slow, failing or absent
+ * server, and ?clock=<days> moves the clock (see ./clock.js).
  *
  * @typedef {'parent' | 'child' | 'moderator'} Role
  * @typedef {{ id: string, role: Role, name: string, email?: string, username?: string }} User
@@ -125,6 +127,8 @@
  * @property {string} sentAt            ISO time
  * @property {ReportItem} [item]        present when it was sent from a task's page
  * @property {{ note: string, at: string }} [resolution]  the moderator's answer, once resolved
+ * @property {boolean} [senderGone]  true on a kept report whose sender has since been deleted; the
+ *   moderator's copy only. Answering it deletes it, because nobody is left to read the answer
  *
  * @typedef {'proud' | 'tidy' | 'brave' | 'clever' | 'kind' | 'effort'} CheerKind
  * @typedef {{ kind: CheerKind | null, line: string }} Cheer  a parent's words with an approval
@@ -153,11 +157,55 @@
  *   taskId: string, taskTitle: string, seen?: boolean }} QuestAward
  * @typedef {{ name: string, tasks: number, you: boolean }} LeaderboardEntry
  */
-import * as server from './fake.js'
+import axios from 'axios'
+import { daysAhead } from './clock.js'
+import { ApiError, toApiError } from './errors.js'
 
 export { ApiError } from './errors.js'
 /** The time. Development can move it (see ./clock.js); ask here, not `new Date()`, for "now". */
 export { now } from './clock.js'
+
+// ------------------------------------------------------------------ the wire
+
+const http = axios.create({ baseURL: '/api', headers: { 'X-GrowKid': '1' } })
+
+// Rule 5, proof files: one photo, video or PDF of up to 25 MB. Checked here only to spare an upload; the server decides.
+const MAX_FILE_BYTES = 25 * 1024 * 1024
+const FILE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/webm', 'video/quicktime', 'application/pdf']
+
+/*
+ * Development only: open any page with ?dev=<mode> to reach a state on purpose. It lasts for the
+ * browser tab; ?dev=ok goes back.
+ *   slow, fail, offline   every call (checking who is signed in and signing out still work)
+ * Sending a proof file slowly, or failing half way, is the browser's own network throttling now.
+ */
+const DEV_KEY = 'growkid.dev'
+if (import.meta.env.DEV) {
+  const asked = new URLSearchParams(window.location.search).get('dev')
+  if (asked) sessionStorage.setItem(DEV_KEY, asked)
+}
+const devMode = () => (import.meta.env.DEV ? sessionStorage.getItem(DEV_KEY) : null)
+
+if (import.meta.env.DEV) {
+  http.interceptors.request.use(async (config) => {
+    config.headers['X-Clock-Days'] = daysAhead()
+    const own = config.url === '/session' && ['get', 'delete'].includes(config.method)
+    const mode = own ? null : devMode()
+    if (mode === 'slow') await new Promise((resolve) => setTimeout(resolve, 6000))
+    if (mode === 'offline') throw new ApiError('NETWORK')
+    if (mode === 'fail') throw new ApiError('SERVER')
+    return config
+  })
+}
+
+/** One request. Resolves to the answer's body; rejects with an ApiError: the server's code, or NETWORK when there was no answer. */
+async function call(method, url, data, config) {
+  try {
+    return (await http.request({ method, url, data, ...config })).data
+  } catch (error) {
+    throw toApiError(error)
+  }
+}
 
 // ------------------------------------------------------------------ accounts and family
 
@@ -165,36 +213,48 @@ export { now } from './clock.js'
  * Who is signed in on this device.
  * @type {() => Promise<User | null>}
  */
-export const getSession = server.getSession
+export const getSession = () => call('get', '/session')
 
 /**
  * Signs in a parent or moderator by email, or a child by username.
- * Rejects WRONG_DETAILS whether the account or the password is the wrong part.
+ * Rejects WRONG_DETAILS whether the account or the password is the wrong part, and TOO_MANY after
+ * too many wrong tries.
  * @type {(details: { identifier: string, password: string }) => Promise<User>}
  */
-export const signIn = server.signIn
+export const signIn = (details) => call('post', '/session', details)
 
 /**
- * Creates a parent account and its family, and signs the parent in.
- * Rejects EMAIL_TAKEN, or INVALID with fields name, email (format) or password (8 or more).
- * @type {(details: { name: string, email: string, password: string }) => Promise<User>}
+ * Creates a parent account and its family, and signs the parent in. country is a code from
+ * listCountries; the family's days follow that country's time zone (rule 25).
+ * Rejects EMAIL_TAKEN, TOO_MANY, or INVALID with fields name, email (format), password (8 or more)
+ * or country ('required': not one of the countries).
+ * @type {(details: { name: string, email: string, password: string, country: string }) => Promise<User>}
  */
-export const signUp = server.signUp
+export const signUp = (details) => call('post', '/parents', details)
+
+/**
+ * Every country a family can be in, with the time zone its days are counted in, sorted by name.
+ * Needs no sign-in: the sign-up form uses it.
+ * @type {() => Promise<{ code: string, name: string, zone: string }[]>}
+ */
+export const listCountries = () => call('get', '/countries')
 
 /** @type {() => Promise<void>} */
-export const signOut = server.signOut
+export const signOut = async () => {
+  await call('delete', '/session')
+}
 
 /**
  * The signed-in parent's children, and only theirs. Rejects NOT_ALLOWED for other roles.
  * @type {() => Promise<Child[]>}
  */
-export const listChildren = server.listChildren
+export const listChildren = () => call('get', '/children')
 
 /**
  * One child of the signed-in parent. Rejects NOT_FOUND for another family's child.
  * @type {(id: string) => Promise<Child>}
  */
-export const getChild = server.getChild
+export const getChild = (id) => call('get', `/children/${id}`)
 
 /**
  * Adds a child with the sign-in details the parent chose. The password is not returned.
@@ -202,16 +262,18 @@ export const getChild = server.getChild
  * or password (6 or more).
  * @type {(child: { name: string, username: string, password: string }) => Promise<Child>}
  */
-export const addChild = server.addChild
+export const addChild = (child) => call('post', '/children', child)
 
 /** @type {(id: string, name: string) => Promise<Child>} */
-export const renameChild = server.renameChild
+export const renameChild = (id, name) => call('patch', `/children/${id}`, { name })
 
 /**
  * Sets a new password. The old one stops working at once.
  * @type {(id: string, password: string) => Promise<void>}
  */
-export const resetChildPassword = server.resetChildPassword
+export const resetChildPassword = async (id, password) => {
+  await call('put', `/children/${id}/password`, { password })
+}
 
 /**
  * Removes a child and everything that belongs to them: tasks, proofs, progress and the reports
@@ -219,31 +281,37 @@ export const resetChildPassword = server.resetChildPassword
  * with nothing that leads back to the child or the family (see resolveReport).
  * @type {(id: string) => Promise<void>}
  */
-export const removeChild = server.removeChild
+export const removeChild = async (id) => {
+  await call('delete', `/children/${id}`)
+}
 
 /**
  * Changes the signed-in parent's name. Rejects INVALID with fields.name. Earlier approvals and
  * notes keep the name they were given under.
  * @type {(name: string) => Promise<User>}
  */
-export const updateName = server.updateName
+export const updateName = (name) => call('patch', '/me', { name })
 
 /**
  * Changes the signed-in parent's password. Rejects WRONG_PASSWORD when current is not their
- * password, and INVALID with fields.next (8 or more).
+ * password, INVALID with fields.next (8 or more), and TOO_MANY after too many tries.
  * @type {(passwords: { current: string, next: string }) => Promise<void>}
  */
-export const changePassword = server.changePassword
+export const changePassword = async (passwords) => {
+  await call('put', '/me/password', passwords)
+}
 
 /**
  * Deletes the signed-in parent's family for good: their account, every child's sign-in, every
  * task and proof with its file, every score and sticker, and the reports any of them sent that
  * the moderator has answered. A report not yet answered is kept for the moderator, so that
  * deleting cannot make it vanish, and holds no user id, family id or task id. Ends the session.
- * Rejects WRONG_PASSWORD.
+ * Rejects WRONG_PASSWORD, and TOO_MANY after too many tries.
  * @type {(password: string) => Promise<void>}
  */
-export const deleteFamily = server.deleteFamily
+export const deleteFamily = async (password) => {
+  await call('post', '/me/delete', { password })
+}
 
 // ------------------------------------------------------------------ tasks and proof
 
@@ -252,14 +320,14 @@ export const deleteFamily = server.deleteFamily
  * soonest first. Proofs come without fileUrl.
  * @type {() => Promise<Task[]>}
  */
-export const listTasks = server.listTasks
+export const listTasks = () => call('get', '/tasks')
 
 /**
  * One task, with fileUrl on its proofs. Rejects NOT_FOUND for a task of another family or,
  * for a child, of another child.
  * @type {(id: string) => Promise<Task>}
  */
-export const getTask = server.getTask
+export const getTask = (id) => call('get', `/tasks/${id}`)
 
 /**
  * A parent creates a task for one of their children.
@@ -267,32 +335,41 @@ export const getTask = server.getTask
  * when the text uses a word tasks may not use; NOT_FOUND for a child who is not theirs.
  * @type {(details: TaskDetails) => Promise<Task>}
  */
-export const createTask = server.createTask
+export const createTask = (details) => call('post', '/tasks', details)
 
 /**
  * Changes a task. Rejects LOCKED once its first proof has been sent, which includes a task
  * that was sent back, and otherwise as createTask.
  * @type {(id: string, details: TaskDetails) => Promise<Task>}
  */
-export const updateTask = server.updateTask
+export const updateTask = (id, details) => call('put', `/tasks/${id}`, details)
 
 /**
  * Deletes a task and its proofs. Rejects LOCKED once the task is approved.
  * @type {(id: string) => Promise<void>}
  */
-export const deleteTask = server.deleteTask
+export const deleteTask = async (id) => {
+  await call('delete', `/tasks/${id}`)
+}
 
 /**
  * A child sends proof for one of their tasks, new or sent back: a file, a note, or both. The
  * task becomes 'review'. Proof sent after the due time is accepted and marked late. onProgress is called
  * with 0 to 1 while a file uploads.
  * Rejects INVALID (fields.proof when there is neither file nor note, fields.note over 500
- * characters), FILE_TYPE, FILE_TOO_LARGE (over 25 MB), LOCKED when the task is not waiting
- * for proof, and NETWORK if the upload breaks off.
+ * characters), FILE_TYPE (decided from the file's bytes, not its name), FILE_TOO_LARGE (over
+ * 25 MB), LOCKED when the task is not waiting for proof, and NETWORK if the upload breaks off.
  * @type {(taskId: string, proof: { file?: File, note?: string },
  *   options?: { onProgress?: (fraction: number) => void }) => Promise<Task>}
  */
-export const sendProof = server.sendProof
+export const sendProof = async (taskId, { file, note = '' }, { onProgress } = {}) => {
+  if (file?.type && !FILE_TYPES.includes(file.type)) throw new ApiError('FILE_TYPE') // no type at all: the server decides from the bytes
+  if (file && file.size > MAX_FILE_BYTES) throw new ApiError('FILE_TOO_LARGE')
+  const form = new FormData()
+  form.set('note', note)
+  if (file) form.set('file', file)
+  return call('post', `/tasks/${taskId}/proofs`, form, { onUploadProgress: (event) => onProgress?.(event.progress ?? 0) })
+}
 
 /**
  * A parent approves the newest proof of a task in review. The task becomes 'approved' and its
@@ -303,7 +380,7 @@ export const sendProof = server.sendProof
  * quest target for the week its proof was sent in also completes that quest.
  * @type {(taskId: string, proofId: string, cheer?: Cheer) => Promise<Task>}
  */
-export const approveProof = server.approveProof
+export const approveProof = (taskId, proofId, cheer) => call('post', `/tasks/${taskId}/review`, { proofId, result: 'approved', cheer })
 
 /**
  * A parent sends the newest proof back with a note saying what to fix. The task becomes
@@ -311,20 +388,23 @@ export const approveProof = server.approveProof
  * ('required') or over 300 characters ('length'), and REVIEWED as approveProof does.
  * @type {(taskId: string, proofId: string, note: string) => Promise<Task>}
  */
-export const sendBackProof = server.sendBackProof
+export const sendBackProof = (taskId, proofId, note) => call('post', `/tasks/${taskId}/review`, { proofId, result: 'sentBack', note })
 
 /**
  * The signed-in child has seen the review results of these tasks: sets resultSeen on them, and
- * on no others, so a result that arrives meanwhile is still new.
+ * on no others, so a result that arrives meanwhile is still new. The server takes at most 200 ids
+ * at once; any beyond that are marked on the next visit.
  * @type {(taskIds: string[]) => Promise<void>}
  */
-export const markResultsSeen = server.markResultsSeen
+export const markResultsSeen = async (taskIds) => {
+  await call('post', '/tasks/seen', { taskIds: taskIds.slice(0, 200) })
+}
 
 /**
  * How many proofs in the signed-in parent's family are waiting for review.
  * @type {() => Promise<number>}
  */
-export const countProofsWaiting = server.countProofsWaiting
+export const countProofsWaiting = () => call('get', '/counts/proofs')
 
 /**
  * The signed-in child's level, XP, points, streak, balance and this week's quest, all worked out
@@ -333,14 +413,14 @@ export const countProofsWaiting = server.countProofsWaiting
  * NOT_ALLOWED for other roles.
  * @type {() => Promise<Growth>}
  */
-export const getGrowth = server.getGrowth
+export const getGrowth = () => call('get', '/growth')
 
 /**
  * The same for each of the signed-in parent's children, by child id. A parent reads every quest
  * with its surprise; sealed is true while the quest is not yet complete.
  * @type {() => Promise<Record<string, Growth>>}
  */
-export const listGrowth = server.listGrowth
+export const listGrowth = () => call('get', '/growth/children')
 
 /**
  * Every sticker there is, in the order of the chart, with earnedAt on the ones the signed-in
@@ -348,20 +428,20 @@ export const listGrowth = server.listGrowth
  * taken back or re-dated, whatever happens to the tasks afterwards.
  * @type {() => Promise<Sticker[]>}
  */
-export const listStickers = server.listStickers
+export const listStickers = () => call('get', '/stickers')
 
 /**
  * How many review results the signed-in child has not yet seen on Today.
  * @type {() => Promise<number>}
  */
-export const countNewResults = server.countNewResults
+export const countNewResults = () => call('get', '/counts/results')
 
 /**
  * One child's progress for the signed-in parent. Worked out from the child's tasks when asked.
  * Rejects NOT_FOUND for another family's child.
  * @type {(childId: string) => Promise<Progress>}
  */
-export const getProgress = server.getProgress
+export const getProgress = (childId) => call('get', `/children/${childId}/progress`)
 
 // ------------------------------------------------------------------ rewards, quests and the rest
 
@@ -370,7 +450,7 @@ export const getProgress = server.getProgress
  * Rejects NOT_ALLOWED for a moderator.
  * @type {() => Promise<Reward[]>}
  */
-export const listRewards = server.listRewards
+export const listRewards = () => call('get', '/rewards')
 
 /**
  * A parent creates a reward, or with an id changes one of their own. The title is 3 to 60
@@ -379,14 +459,16 @@ export const listRewards = server.listRewards
  * fields.word, and NOT_FOUND for an id that is not theirs.
  * @type {(reward: { id?: string, title: string, cost: number }) => Promise<Reward>}
  */
-export const saveReward = server.saveReward
+export const saveReward = (reward) => call('post', '/rewards', reward)
 
 /**
  * A parent deletes one of their rewards. Requests already made for it stay and can still be
  * answered, because each keeps its own copy of the title and cost. Rejects NOT_FOUND.
  * @type {(id: string) => Promise<void>}
  */
-export const deleteReward = server.deleteReward
+export const deleteReward = async (id) => {
+  await call('delete', `/rewards/${id}`)
+}
 
 /**
  * A child asks for one of their parent's rewards. The points are held at once, and the cost is
@@ -394,14 +476,14 @@ export const deleteReward = server.deleteReward
  * that, and NOT_FOUND for a reward that is not their parent's.
  * @type {(rewardId: string) => Promise<RewardRequest>}
  */
-export const requestReward = server.requestReward
+export const requestReward = (rewardId) => call('post', '/requests', { rewardId })
 
 /**
  * The requests, newest first: a parent's whole family, or a child's own. Rejects NOT_ALLOWED for
  * a moderator.
  * @type {() => Promise<RewardRequest[]>}
  */
-export const listRequests = server.listRequests
+export const listRequests = () => call('get', '/requests')
 
 /**
  * A parent gives or declines a request in their family; a note of up to 200 characters goes with
@@ -410,13 +492,13 @@ export const listRequests = server.listRequests
  * or fields.note ('length'), and NOT_FOUND for a request of another family.
  * @type {(id: string, result: 'given' | 'declined', note?: string) => Promise<RewardRequest>}
  */
-export const answerRequest = server.answerRequest
+export const answerRequest = (id, result, note) => call('post', `/requests/${id}/answer`, { result, note })
 
 /**
  * How many requests in the signed-in parent's family are waiting for an answer.
  * @type {() => Promise<number>}
  */
-export const countRequestsWaiting = server.countRequestsWaiting
+export const countRequestsWaiting = () => call('get', '/counts/requests')
 
 /**
  * A parent sets one quest for a child: tasks to have approved in a week (2 to 20), a bonus in
@@ -428,14 +510,14 @@ export const countRequestsWaiting = server.countRequestsWaiting
  * fields.surprise ('length'), SCREENED with fields.word, and NOT_FOUND for a child who is not theirs.
  * @type {(childId: string, def: QuestDef | null) => Promise<QuestDef | null>}
  */
-export const setQuest = server.setQuest
+export const setQuest = (childId, def) => call('put', `/children/${childId}/quest`, def ?? undefined) // no body at all removes the quest; the server refuses a JSON null
 
 /**
  * The rest days a parent has set for a child, as 'YYYY-MM-DD', oldest first, from 7 days ago
  * onward. Rejects NOT_FOUND for a child who is not theirs.
  * @type {(childId: string) => Promise<string[]>}
  */
-export const listRestDays = server.listRestDays
+export const listRestDays = (childId) => call('get', `/children/${childId}/rest-days`)
 
 /**
  * A parent sets or clears one rest day for a child, from 7 days ago up to 90 days ahead, both
@@ -443,7 +525,7 @@ export const listRestDays = server.listRestDays
  * fields.day ('range'), and NOT_FOUND for a child who is not theirs.
  * @type {(childId: string, day: string, rest: boolean) => Promise<string[]>}
  */
-export const setRestDay = server.setRestDay
+export const setRestDay = (childId, day, rest) => call('post', `/children/${childId}/rest-days`, { day, rest })
 
 /**
  * A child chooses the task to do next, or null to clear the choice, and gets their tasks back as
@@ -452,7 +534,7 @@ export const setRestDay = server.setRestDay
  * open (to do or sent back), and NOT_FOUND for a task that is not theirs.
  * @type {(taskId: string | null) => Promise<Task[]>}
  */
-export const pinTask = server.pinTask
+export const pinTask = (taskId) => call('put', '/pin', { taskId })
 
 /**
  * The family's children and the tasks each has had approved this week, by name, most first,
@@ -460,19 +542,27 @@ export const pinTask = server.pinTask
  * the family has fewer than 2 children. Rejects NOT_ALLOWED for other roles.
  * @type {() => Promise<LeaderboardEntry[] | null>}
  */
-export const getLeaderboard = server.getLeaderboard
+export const getLeaderboard = () => call('get', '/leaderboard')
 
 /**
  * The signed-in parent's settings. The leaderboard is off until they turn it on.
- * @type {() => Promise<{ leaderboard: boolean }>}
+ * @typedef {{ leaderboard: boolean, country: string }} Settings  country is a code from listCountries
+ * @type {() => Promise<Settings>}
  */
-export const getSettings = server.getSettings
+export const getSettings = () => call('get', '/settings')
 
 /**
  * A parent turns the family leaderboard on or off.
- * @type {(on: boolean) => Promise<{ leaderboard: boolean }>}
+ * @type {(on: boolean) => Promise<Settings>}
  */
-export const setLeaderboard = server.setLeaderboard
+export const setLeaderboard = (on) => call('put', '/settings', { leaderboard: on })
+
+/**
+ * A parent changes the family's country. From then on days are counted in its time zone, so past
+ * days are counted again: a streak or a quest week can change. Rejects INVALID with fields.country.
+ * @type {(country: string) => Promise<Settings>}
+ */
+export const setCountry = (country) => call('put', '/settings/country', { country })
 
 // ------------------------------------------------------------------ reports
 
@@ -480,23 +570,24 @@ export const setLeaderboard = server.setLeaderboard
  * A parent or a child reports a problem. It goes to the moderator and to nobody else: a parent
  * is never shown, told of or asked about a report their child sent. taskId links the task it was
  * sent from, of which a copy is kept (see ReportItem); a task the sender cannot see is left out.
- * Rejects INVALID with fields.details ('required', or 'length' over 1,000 characters).
+ * Rejects INVALID with fields.details ('required', or 'length' over 1,000 characters), and
+ * TOO_MANY after 10 reports sent in an hour.
  * @type {(report: { details: string, taskId?: string }) => Promise<Report>}
  */
-export const sendReport = server.sendReport
+export const sendReport = (report) => call('post', '/reports', report)
 
 /**
  * The reports the signed-in user sent, newest first, each with the moderator's answer once it
  * has one.
  * @type {() => Promise<Report[]>}
  */
-export const listMyReports = server.listMyReports
+export const listMyReports = () => call('get', '/reports/mine')
 
 /**
- * Every report, oldest first. Moderator only: rejects NOT_ALLOWED for anyone else.
+ * The reports still waiting, oldest first. Moderator only: rejects NOT_ALLOWED for anyone else.
  * @type {() => Promise<Report[]>}
  */
-export const listReports = server.listReports
+export const listReports = () => call('get', '/reports')
 
 /**
  * The moderator answers a report and closes it. The answer is shown to whoever sent the report.
@@ -507,18 +598,26 @@ export const listReports = server.listReports
  * the report is already resolved, and NOT_FOUND.
  * @type {(id: string, note: string) => Promise<Report>}
  */
-export const resolveReport = server.resolveReport
+export const resolveReport = (id, note) => call('post', `/reports/${id}/resolve`, { note })
 
 // ------------------------------------------------------------------ not part of the real API
 
 /**
- * The demo family's sign-ins, in development builds only.
+ * The demo family's sign-ins (made by `npm run seed` in server/), in development builds only.
  * @type {() => Promise<{ who: string, identifier: string, password: string }[]>}
  */
-export const listDemoSignIns = server.listDemoSignIns
+export const listDemoSignIns = async () =>
+  import.meta.env.DEV
+    ? [
+        { who: 'Meera Joshi (parent)', identifier: 'meera@example.com', password: 'growkid-demo' },
+        { who: 'Aarav (child)', identifier: 'aarav', password: 'plants42' },
+        { who: 'Diya (child)', identifier: 'diya', password: 'books77' },
+        { who: 'Moderator (moderator)', identifier: 'moderator@example.com', password: 'growkid-demo' },
+      ]
+    : []
 
 /**
  * True when the development switch is simulating no network.
  * @type {() => boolean}
  */
-export const pretendingOffline = () => server.devMode() === 'offline'
+export const pretendingOffline = () => devMode() === 'offline'

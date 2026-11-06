@@ -29,8 +29,9 @@ export const useSession = create((set) => ({
   signIn: async (details) => set({ user: await api.signIn(details), ended: null }),
   signUp: async (details) => set({ user: await api.signUp(details), ended: null }),
   signOut: async () => {
-    // whatever the server answers, this device forgets the session: it may be a shared one
-    await api.signOut().catch(() => {})
+    // only the server can end the session (the cookie is httpOnly): if it cannot be reached this rejects and the device is
+    // still signed in, so the button says so instead of pretending
+    await api.signOut()
     set({ user: null, ended: 'left' })
   },
   /** Deletes the family's data, which also ends the session. Landing then says so, once. */

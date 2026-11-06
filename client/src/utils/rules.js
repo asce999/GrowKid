@@ -8,12 +8,17 @@ import { fileSizeText } from './format.js'
 export const PROOF_TYPES = 'image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime,application/pdf'
 const PROOF_MAX_BYTES = 25 * 1024 * 1024
 
+/** The server's limits (sitemap rule 27): a name is at most 60 characters, a password at most 72 bytes (the bcrypt limit). */
+const nameTooLong = (v) => v.trim().length > 60
+const passwordTooLong = (v) => new TextEncoder().encode(v).length > 72
+const TOO_LONG = 'That password is too long. Use 72 characters or fewer (fewer if it uses letters outside A to Z).'
+
 export const rules = {
-  name: (v) => (v.trim() ? null : 'Enter a name.'),
+  name: (v) => (!v.trim() ? 'Enter a name.' : nameTooLong(v) ? 'Use 60 characters or fewer.' : null),
   email: (v) => (/^\S+@\S+\.\S+$/.test(v.trim()) ? null : 'Enter an email address, like name@example.com.'),
-  parentPassword: (v) => (v.length >= 8 ? null : 'Use at least 8 characters.'),
+  parentPassword: (v) => (v.length < 8 ? 'Use at least 8 characters.' : passwordTooLong(v) ? TOO_LONG : null),
   username: (v) => (/^[a-z0-9]{3,20}$/.test(v) ? null : 'Use 3 to 20 lowercase letters or numbers, with no spaces.'),
-  childPassword: (v) => (v.length >= 6 ? null : 'Use at least 6 characters.'),
+  childPassword: (v) => (v.length < 6 ? 'Use at least 6 characters.' : passwordTooLong(v) ? TOO_LONG : null),
 
   taskTitle: (v) => (v.trim().length >= 3 && v.trim().length <= 80 ? null : 'Give the task a title of 3 to 80 characters.'),
   taskInstructions: (v) => (v.trim() ? null : 'Say what has to be done and what proof to send.'),

@@ -24,7 +24,7 @@ export default function Privacy() {
   return (
     <div className="max-w-prose">
       <title>Safety and privacy – GrowKid</title>
-      <h1>Safety and privacy</h1>
+      <h1 className="type-headline">Safety and privacy</h1>
       <p className="mt-2">
         This page says who can see what in GrowKid, what is stored and where, and how to delete it. It is written so that a child can
         read it too.
@@ -54,6 +54,15 @@ export default function Privacy() {
         <p>
           There is one difference in timing. When a parent approves a task, the parent’s pages count it at once. The child sees it
           arrive on their Today page first, with the reason, and after that it shows everywhere.
+        </p>
+      </Part>
+
+      <Part id="task-rules-title" title="What a task may not ask for">
+        <p>A task may not ask a child to keep a secret, take a dare, or hide something from their parent.</p>
+        <p>
+          GrowKid refuses a task whose title or instructions use words such as “secret”, “dare” or “don’t tell”, and it says which word
+          it found. A short list of words cannot catch everything, so if a task worries you, a child or a parent can report it from the
+          task’s page.
         </p>
       </Part>
 
@@ -100,19 +109,20 @@ export default function Privacy() {
 
       <Part id="stored-title" title="What is stored, and where">
         <p>
-          Right now, everything is stored in this browser, on this device: accounts, tasks, proof photos, videos and files, scores
-          and reports. There is no GrowKid server yet. Nothing is sent anywhere, and nobody else can read it unless they use this same
-          browser.
+          Everything is stored on the GrowKid server, not on your device: for a parent, a name, an email and a country; for a child, a
+          name and a username; and every task, proof photo, video and file, note, score and report. The country decides where each
+          day starts and ends.
         </p>
         <p>
-          This is a working demonstration, not safe storage. Passwords are kept as they were typed, and anyone who knows how to look
-          inside a browser can read everything in it. So do not use a password here that you use anywhere else, and do not use this
-          version to keep real family records.
+          Passwords are hashed before they are saved, which means they are scrambled in a way that cannot be undone, so nobody can read
+          one back. Proof files stay on the GrowKid server’s own disk, and only the child and their parent can open them. Photos and
+          Photos and most phone videos are saved without the place they were taken or the camera’s details; a photo keeps only which
+          way up it goes. A WebM video is kept as sent, and so is the GPS route that some action cameras record alongside the picture.
         </p>
-        <p>Clearing this browser’s site data erases everything GrowKid holds. There is no other copy.</p>
         <p>
-          GrowKid sets no advertising or analytics cookies and has no trackers. The one thing it asks another company for is its
-          typefaces: this page loads Lexend and Baloo 2 from Google Fonts, so your browser asks Google’s servers for them.
+          GrowKid sets no advertising or analytics cookies and has no trackers. It sets one cookie, which keeps you signed in on this
+          device for up to 7 days, and signing out removes it. The one thing it asks another company for is its typefaces: this page
+          loads Lexend and Baloo 2 from Google Fonts, so your browser asks Google’s servers for them.
         </p>
       </Part>
 

@@ -118,6 +118,9 @@ function ReportRow({ report, children }) {
               {FROM[report.from]} sent this <time dateTime={report.sentAt}>{whenText(report.sentAt)}</time>
               {report.item && ', from a task'}
             </span>
+            {report.senderGone && (
+              <span className="type-small muted">Their account has since been deleted, so an answer will not be kept.</span>
+            )}
           </span>
         </summary>
         <div className="max-w-prose px-4 pb-6 sm:px-6">
@@ -150,7 +153,11 @@ export default function Reports() {
     // ponytail: built on the list as it was when the answer was sent. A report that arrived in
     // that moment is back on the next reload: on focus, or within a minute.
     loaded.set(loaded.data.map((report) => (report.id === answered.id ? answered : report)))
-    setNote('Resolved. Your answer now shows on their Report a problem page.')
+    setNote(
+      answered.senderGone
+        ? 'Resolved. Their account has since been deleted, so the answer was not kept.'
+        : 'Resolved. Your answer now shows on their Report a problem page.',
+    )
     document.getElementById('main')?.focus() // the form that was used has gone
   }
   const stale = () => {

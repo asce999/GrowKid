@@ -172,7 +172,7 @@ test('rewards: a parent saves, edits and deletes their own; the family reads the
   assert.deepEqual([edited.status, edited.body], [200, { id: film.body.id, title: 'Film night out', cost: 120 }])
   assert.equal((await db.reward.findMany({ where: { parentId: mom.user.id } })).length, 2)
   for (const id of [theirs.id, 'nope', 123, true, ['x']]) refused(await mom.api.post('/rewards', { id, title: 'Anything', cost: 20 }), 404, 'NOT_FOUND') // an id that is not theirs, whatever its type
-  for (const id of [undefined, null, '']) { // a missing or empty id makes a new reward (fake.js:666-680)
+  for (const id of [undefined, null, '']) { // a missing or empty id makes a new reward
     const fresh = await mom.api.post('/rewards', { id, title: 'Anything', cost: 20 })
     assert.deepEqual([fresh.status, fresh.body.id === film.body.id, fresh.body.title], [201, false, 'Anything'])
     assert.equal((await mom.api.del(`/rewards/${fresh.body.id}`)).status, 204)
