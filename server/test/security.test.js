@@ -34,6 +34,17 @@ test('malformed JSON is 400 INVALID', async () => {
   assert.deepEqual(res.body, { code: 'INVALID' })
 })
 
+test('the error handler: a foreign key that names a row gone meanwhile (P2003) and a bad percent-escape (URIError) are 404 NOT_FOUND, never 500', async () => {
+  // P2003 needs a write that loses a race with a removal, which no test can time; so the handler (the last layer of the app) is called with the errors themselves
+  const handler = (await import('../src/app.js')).default.router.stack.at(-1).handle
+  for (const err of [Object.assign(new Error('Foreign key constraint violated'), { code: 'P2003' }), Object.assign(new Error('Record not found'), { code: 'P2025' }), new URIError('URI malformed')]) {
+    const sent = []
+    const res = { headersSent: false, status: (code) => (sent.push(code), res), json: (body) => (sent.push(body), res) }
+    handler(err, { complete: true, method: 'PUT', path: '/' }, res, () => sent.push('next'))
+    assert.deepEqual(sent, [404, { code: 'NOT_FOUND' }], err.message)
+  }
+})
+
 test('a 30 kb body is 400 INVALID', async () => {
   const res = await api.post('/nothing', { pad: 'a'.repeat(30 * 1024) })
   assert.equal(res.status, 400)

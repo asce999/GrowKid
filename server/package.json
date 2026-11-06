@@ -7,7 +7,9 @@
     "start": "node --env-file=.env src/index.js",
     "pretest": "node --env-file=.env.test scripts/test-db.js",
     "test": "node --env-file=.env.test --test --test-concurrency=1 \"test/*.test.js\"",
-    "lint": "oxlint"
+    "lint": "oxlint",
+    "seed": "node --env-file=.env prisma/seed.js",
+    "moderator": "node --env-file=.env scripts/moderator.js"
   },
   "private": true,
   "dependencies": {

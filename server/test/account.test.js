@@ -10,10 +10,16 @@ import { db, lockChild } from '../src/db.js'
 import { as, family, start } from './helpers.js'
 
 let server
+// Rows this file makes directly that no family deletion removes: the test database is never reset, so they go in after().
+const made = { users: [], reports: [] }
 before(async () => {
   server = await start()
 })
-after(() => server.close())
+after(async () => {
+  await db.report.deleteMany({ where: { id: { in: made.reports } } })
+  await db.user.deleteMany({ where: { id: { in: made.users } } })
+  server.close()
+})
 
 const tag = () => randomUUID().replaceAll('-', '').slice(0, 10)
 const GOOD = { name: 'Meera', email: 'meera@example.com', password: 'long-enough', country: 'IN' }
@@ -354,7 +360,8 @@ test('every parent route refuses a signed-out visitor, a child and a moderator',
   const mom = await family(server.base)
   const kid = await addChild(mom.api)
   const email = `mod-${tag()}@example.com`
-  await db.user.create({ data: { role: 'moderator', name: 'Mod', email, passwordHash: await bcrypt.hash('moderator-pass', 4) } })
+  const { id } = await db.user.create({ data: { role: 'moderator', name: 'Mod', email, passwordHash: await bcrypt.hash('moderator-pass', 4) } })
+  made.users.push(id)
   const moderator = await signedIn(email, 'moderator-pass')
   assert.equal((await moderator.get('/session')).body.role, 'moderator')
   const routes = [
@@ -397,6 +404,7 @@ async function hold(parent, child) {
     parentAnswered: await report(parent.id, true), parentOpen: await report(parent.id, false),
     childAnswered: await report(child.id, true), childOpen: await report(child.id, false),
   }
+  made.reports.push(...Object.values(reports))
   return { taskId: task.id, fileId, rewardId: reward.id, reports }
 }
 
@@ -452,6 +460,7 @@ test('deleteFamily needs the password, then erases the family: every table, the 
   refused(await as(server.base).post('/session', { identifier: mom.email, password: mom.password }), 401, 'WRONG_DETAILS')
   refused(await as(server.base).post('/session', { identifier: kid.username, password: kid.password }), 401, 'WRONG_DETAILS')
   assert.deepEqual(await left(neighbour.user, neighbourKid, kept), WHOLE) // another family is untouched
+  assert.equal((await neighbour.api.post('/me/delete', { password: neighbour.password })).status, 204) // and its file does not stay in the test folder
 })
 
 test('removeChild erases one child the same way and leaves the parent, the other child and the family rewards', async () => {
@@ -472,6 +481,7 @@ test('removeChild erases one child the same way and leaves the parent, the other
   refused(await mom.api.get(`/children/${kid.id}`), 404, 'NOT_FOUND')
   assert.deepEqual((await mom.api.get('/children')).body, [{ id: sibling.id, name: 'Kid', username: sibling.username }])
   assert.deepEqual((await left(mom.user, sibling, siblingHeld)).tasks, 1)
+  assert.equal((await mom.api.post('/me/delete', { password: mom.password })).status, 204) // the sibling's file does not stay in the test folder
 })
 
 test('a row that goes away between the lookup and the update is NOT_FOUND, never 500 (P2025)', async () => {

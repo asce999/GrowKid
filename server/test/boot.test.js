@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
+import { db } from '../src/db.js'
+import { as, family, start } from './helpers.js'
 
 const entry = fileURLToPath(new URL('../src/index.js', import.meta.url))
 const boot = (changes) => spawnSync(process.execPath, [entry], { env: { ...process.env, ...changes }, encoding: 'utf8', timeout: 20_000 })
@@ -42,6 +45,38 @@ test('boot succeeds with a good environment (control for the cases above)', { ti
   }
 })
 
-test('A1: TZ from the env file takes effect (Asia/Kolkata is UTC+5:30)', () => {
-  assert.equal(new Date(2026, 5, 1).getTimezoneOffset(), -330)
+test('S11: families in India and the United States sending proof at the same instant near midnight land in different weeks', async () => {
+  assert.equal(new Date(2026, 5, 1).getTimezoneOffset(), 0) // TZ=UTC in the env files, so a day that forgets its zone shows as the UTC day
+  const DAY = 86_400_000
+  const instant = new Date()
+  instant.setUTCHours(19, 0, 0, 0) // a Sunday at 19:00 UTC: already Monday 00:30 in India, still Sunday afternoon in New York
+  instant.setUTCDate(instant.getUTCDate() + ((7 - instant.getUTCDay()) % 7))
+  if (instant <= Date.now()) instant.setUTCDate(instant.getUTCDate() + 7)
+  const days = (instant - Date.now()) / DAY // the dev clock moves this far, on every request below
+  const server = await start()
+  const mothers = []
+  try {
+    const weekOf = async (country) => {
+      const mom = await family(server.base, { country })
+      mothers.push(mom)
+      const username = `k${randomUUID().slice(0, 8)}`
+      const child = await mom.api.post('/children', { name: 'Kid', username, password: 'kid-pass-1' })
+      const parent = as(server.base, { days })
+      await parent.post('/session', { identifier: mom.email, password: mom.password })
+      const kid = as(server.base, { days })
+      await kid.post('/session', { identifier: username, password: 'kid-pass-1' })
+      await db.quest.create({ data: { childId: child.body.id, target: 1, bonus: 5, setAt: instant } })
+      const task = await parent.post('/tasks', { childId: child.body.id, category: 'study', title: 'Read a page', instructions: 'Any page.', dueAt: new Date(+instant + DAY).toISOString(), points: 20 })
+      const sent = await kid.form(`/tasks/${task.body.id}/proofs`, { note: 'read it' })
+      const done = await parent.post(`/tasks/${task.body.id}/review`, { proofId: sent.body.proofs[0].id, result: 'approved' })
+      assert.equal(done.status, 200)
+      return (await db.questAward.findFirstOrThrow({ where: { childId: child.body.id } })).week
+    }
+    const monday = (offset) => new Date(+instant + offset * DAY).toISOString().slice(0, 10)
+    assert.equal(await weekOf('IN'), monday(1)) // the proof was sent on Monday there
+    assert.equal(await weekOf('US'), monday(-6)) // and on Sunday there: the week before
+  } finally {
+    await Promise.all(mothers.map((mom) => mom.api.post('/me/delete', { password: mom.password })))
+    await server.close()
+  }
 })

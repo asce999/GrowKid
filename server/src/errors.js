@@ -45,5 +45,9 @@ export const invalid = (fields) => {
   if (Object.keys(wrong).length) refuse('INVALID', wrong)
 }
 
-/** The boundary type check (section 7): a string stays itself, anything else becomes '' and fails the normal length check. */
-export const text = (v) => (typeof v === 'string' ? v : '')
+/**
+ * The boundary type check (section 7): a string stays itself, anything else becomes '' and fails the normal length check.
+ * PostgreSQL and Prisma refuse a NUL character and a lone surrogate, which would otherwise be a 500: a NUL is removed and a lone
+ * surrogate becomes U+FFFD, and nothing else the person typed is lost.
+ */
+export const text = (v) => (typeof v === 'string' ? v.replaceAll('\0', '').toWellFormed() : '')

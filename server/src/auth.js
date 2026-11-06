@@ -39,7 +39,8 @@ export const only = (req, role) => {
 /** A child of the signed-in parent. Someone else's child does not exist as far as they can tell (NOT_FOUND). */
 export async function ownChild(req, id) {
   const me = only(req, 'parent')
-  return (await db.user.findFirst({ where: { id, role: 'child', parentId: me.id } })) ?? refuse('NOT_FOUND')
+  // text(): a NUL in a URL's id (%00) would be refused by PostgreSQL as a 500; as a child that does not exist it is a 404
+  return (await db.user.findFirst({ where: { id: text(id), role: 'child', parentId: me.id } })) ?? refuse('NOT_FOUND')
 }
 
 /** Starts a seven-day session on this device: the token carries the user's tokenVersion, so raising it later ends every device's. */

@@ -11,7 +11,7 @@ const fail = (message) => {
 if (!['development', 'test', 'production'].includes(env.NODE_ENV)) fail('NODE_ENV must be development, test or production')
 if (!env.DATABASE_URL) fail('DATABASE_URL is not set')
 if (!env.JWT_SECRET || env.JWT_SECRET.length < 32) fail('JWT_SECRET must be at least 32 characters')
-if (!env.TZ) fail('TZ is not set (A1: use Asia/Kolkata)')
+if (!env.TZ) fail('TZ is not set (use UTC: a family day follows its country, not this)')
 try {
   new Intl.DateTimeFormat('en', { timeZone: env.TZ }) // Node silently falls back to UTC for an unknown zone
 } catch {

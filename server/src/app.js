@@ -1,10 +1,14 @@
 import express from 'express'
 import helmet from 'helmet'
 import cookieParser from 'cookie-parser'
+import multer from 'multer'
 import { who } from './auth.js'
 import { setClockDays } from './clock.js'
 import { ApiError, STATUS, refuse } from './errors.js'
 import { account } from './routes/account.js'
+import { family } from './routes/family.js'
+import { reports } from './routes/reports.js'
+import { tasks } from './routes/tasks.js'
 
 /** The Express app, without listening: index.js listens, the tests listen on port 0. Order follows plan section 4. */
 const app = express()
@@ -30,6 +34,9 @@ if (process.env.NODE_ENV !== 'production') {
 
 app.use(who)
 app.use('/api', account)
+app.use('/api', tasks)
+app.use('/api', family)
+app.use('/api', reports)
 
 app.use((_req, res) => {
   res.status(404).json({ code: 'NOT_FOUND' })
@@ -42,14 +49,22 @@ app.use((err, req, res, next) => {
   if (err instanceof ApiError) {
     return res.status(STATUS[err.code] ?? 500).json({ code: err.code, fields: err.fields })
   }
+  // multer: a file over the limit is its own code; any other limit or malformed upload is an unreadable proof
+  if (err instanceof multer.MulterError) {
+    const body = err.code === 'LIMIT_FILE_SIZE' ? { code: 'FILE_TOO_LARGE' } : { code: 'INVALID', fields: { proof: 'format' } }
+    return res.status(STATUS[body.code]).json(body)
+  }
   // Prisma P2002: the unique insert lost a race (or the email or username was simply taken)
   if (err.code === 'P2002') {
     const target = String(err.meta?.target) // ['email'], or the index name on some drivers
     const taken = target.includes('email') ? 'EMAIL_TAKEN' : target.includes('username') ? 'USERNAME_TAKEN' : null
     if (taken) return res.status(STATUS[taken]).json({ code: taken })
   }
-  // Prisma P2025: the row to update or delete went away after the handler found it
-  if (err.code === 'P2025') return res.status(404).json({ code: 'NOT_FOUND' })
+  // Prisma P2025 (the row to update or delete went away after the handler found it) and P2003 (a write names a parent row that went
+  // away meanwhile, such as a child removed or a family deleted): either way the thing asked about no longer exists
+  if (err.code === 'P2025' || err.code === 'P2003') return res.status(404).json({ code: 'NOT_FOUND' })
+  // Express 5's router throws this for a route parameter with a bad percent-escape (/children/%ZZ): no such id, so no such thing
+  if (err instanceof URIError) return res.status(404).json({ code: 'NOT_FOUND' })
   // body-parser: malformed JSON, too large, wrong charset
   if (typeof err.type === 'string' && err.status >= 400 && err.status < 500) {
     return res.status(400).json({ code: 'INVALID' })
