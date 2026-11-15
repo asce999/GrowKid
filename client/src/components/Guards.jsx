@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
-import { Navigate, Outlet, ScrollRestoration, useLocation } from 'react-router-dom'
+import { Navigate, Outlet, ScrollRestoration, useLocation, useRouteError } from 'react-router-dom'
 import * as api from '../api/index.js'
+import { mayReloadOnce } from '../api/reload.js'
 import { useLoad } from '../hooks/useLoad.js'
 import { destinationFor, homeFor, useSession } from '../store/session.js'
 import { EmptyState, ErrorState, OfflineBanner, PageLoading } from './states.jsx'
@@ -48,8 +49,30 @@ export function Root() {
   )
 }
 
-/** Something broke while drawing a page. */
+/** While the first page's code arrives (P5): the same skeleton the app shows while the session loads. */
+export function Booting() {
+  return (
+    <main id="main" tabIndex={-1} className="mx-auto max-w-parent p-6">
+      <PageLoading />
+    </main>
+  )
+}
+
+/**
+ * A page's code that failed to load: after an update the old file names are gone, and the browser's own wording differs (Chrome
+ * "Failed to fetch dynamically imported module", Firefox "error loading dynamically imported module", Safari "Importing a module
+ * script failed").
+ */
+const missingCode = (error) => /dynamically imported module|Importing a module script failed/i.test(String(error?.message ?? ''))
+
+/** Something broke while drawing a page. A page whose code would not load reloads the app once first (P5). */
 export function Crashed() {
+  const error = useRouteError()
+  const reloading = missingCode(error) && mayReloadOnce()
+  useEffect(() => {
+    if (reloading) window.location.reload()
+  }, [reloading])
+  if (reloading) return <Booting />
   return (
     <main id="main" className="mx-auto max-w-parent p-6">
       <ErrorState onRetry={() => window.location.reload()} />

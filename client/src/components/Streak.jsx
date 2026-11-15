@@ -1,8 +1,10 @@
 import { Flame } from 'lucide-react'
-import { DAY_SAID } from '../utils/format.js'
+import { DAY_SAID, dateOfKey, dayKeyOf, dayLabel } from '../utils/format.js'
 
-const letter = new Intl.DateTimeFormat('en-IN', { weekday: 'narrow' })
-const weekday = new Intl.DateTimeFormat('en-IN', { weekday: 'long' })
+// P14: a day mark is the instant its day starts in the family's zone; its key is that day, labelled the same on every device
+const letter = dayLabel({ weekday: 'narrow' })
+const weekday = dayLabel({ weekday: 'long' })
+const named = (day) => dateOfKey(dayKeyOf(day))
 
 /**
  * The streak: the flame, the number and the last seven days, today last. It is calm: a missed
@@ -20,9 +22,9 @@ export default function Streak({ streak, best = false }) {
       <ol className="flex gap-1.5" aria-label="The last seven days">
         {streak.week.map(({ day, state }) => (
           <li key={day} className={`day-mark day-${state}`}>
-            <span aria-hidden="true">{letter.format(new Date(day))}</span>
+            <span aria-hidden="true">{letter.format(named(day))}</span>
             <span className="sr-only">
-              {weekday.format(new Date(day))}: {DAY_SAID[state]}
+              {weekday.format(named(day))}: {DAY_SAID[state]}
             </span>
           </li>
         ))}

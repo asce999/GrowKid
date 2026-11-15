@@ -4,20 +4,50 @@ import { STICKERS, approvedInWeek, balanceOf, dayKey, progress, questOf, recordO
 
 /** The rules a handler checks by value, ported from the stand-in removed in B4. The award rules are in scoring.js. */
 
-// Rule 5, proof files: one photo, video or PDF of up to 25 MB, or a note with no file. The seven types are files.js's sniff table.
+// Rule 5, proof files: one photo or video of up to 25 MB, or a note with no file (C2: no PDF). The six types are files.js's sniff table.
 export const MAX_FILE_BYTES = 25 * 1024 * 1024
+/** C8: the version of Safety and privacy a consent is given under: the date the page last changed. Privacy.jsx shows the same date. */
+export const PRIVACY_VERSION = '2026-11-15'
 const CATEGORIES = ['chores', 'study', 'reading', 'creative', 'outdoors', 'health']
 // Rule 20, cheers: the six kinds a parent can approve with.
 export const CHEER_KINDS = ['proud', 'tidy', 'brave', 'clever', 'kind', 'effort']
+// Rule 27, L6: the most one family may hold. tasks counts one child's tasks that are not approved yet.
+const CAPS = { children: 10, tasks: 300, rewards: 50, series: 20 } // series: H1, per child
+/** L6: a family's proof files together. This, not the task cap, is what protects the disk. */
+export const STORAGE_BYTES = 2 * 1024 ** 3
+/** L9: the free space a stored proof must leave on the upload folder's drive. */
+export const FREE_BYTES = 2 * 1024 ** 3
+/**
+ * L6: QUOTA, naming the cap, when `count` is already the most allowed.
+ * ponytail: the caller counts and then inserts, so two requests at once can pass a cap by one; take the parent's row lock if that matters.
+ */
+export const cap = (quota, count) => {
+  if (count >= CAPS[quota]) refuse('QUOTA', { quota })
+}
 /** The statuses in which a task takes proof (rule 2). */
 export const OPEN = ['todo', 'sentBack']
 // Rule 8 (A8): the stand-in's three words, until the user supplies more.
 const BLOCKED_WORDS = ['secret', 'dare', "don't tell"]
 
-/** Rule 8: SCREENED, naming the word, when the text uses a blocked word. A typographic apostrophe counts as a plain one. */
+/**
+ * One spelling for what a person typed: NFKC, lower case, a typographic apostrophe as a plain one, and no invisible format
+ * characters (\p{Cf}: a soft hyphen or a zero-width space would show "secret" and hide it from the list).
+ */
+const plain = (words) => words.normalize('NFKC').replace(/\p{Cf}/gu, '').toLowerCase().replaceAll('’', "'")
+
+/**
+ * C7: whether `word` is in `text` as a whole word, in any script. \b knows only ASCII letters, so a Hindi word would never match at a
+ * sentence's edge: a letter, mark or digit on either side means it is part of a longer word. The word is escaped, so its characters
+ * are only themselves.
+ */
+export function matchesWord(word, text) {
+  const escaped = plain(word).replace(/[\\^$.*+?()[\]{}|/]/g, String.raw`\$&`)
+  return new RegExp(String.raw`(?<![\p{L}\p{M}\p{N}])${escaped}(?![\p{L}\p{M}\p{N}])`, 'u').test(plain(text))
+}
+
+/** Rule 8: SCREENED, naming the word, when the text uses a blocked word. */
 export function screen(words) {
-  const lower = words.toLowerCase().replaceAll('’', "'")
-  const word = BLOCKED_WORDS.find((w) => new RegExp(String.raw`\b${w}\b`).test(lower))
+  const word = BLOCKED_WORDS.find((w) => matchesWord(w, words))
   if (word) refuse('SCREENED', { word })
 }
 
@@ -27,22 +57,51 @@ export function screen(words) {
  * (compared by the minute, as the form works in minutes). Returns the values to store.
  */
 export function checkTask(body, before) {
+  const { values, problems } = taskWords(body)
+  const dueAt = new Date(text(body.dueAt))
+  const valid = !Number.isNaN(dueAt.getTime())
+  const moved = !before || (valid && dueAt.toISOString().slice(0, 16) !== before.toISOString().slice(0, 16))
+  invalid({ ...problems, dueAt: (!valid || (moved && dueAt <= now())) && 'past' })
+  screen(`${values.title} ${values.instructions} ${values.doneLooksLike}`)
+  return { ...values, dueAt }
+}
+
+/** What a task and a series share (rules 2, 3 and 11; H5): the values to store and what is wrong with each, if anything. */
+function taskWords(body) {
   const category = text(body.category)
   const title = text(body.title).trim()
   const instructions = text(body.instructions)
-  const dueAt = new Date(text(body.dueAt))
+  const done = body.doneLooksLike ?? ''
+  const doneLooksLike = text(done).trim()
   const { points } = body
-  const valid = !Number.isNaN(dueAt.getTime())
-  const moved = !before || (valid && dueAt.toISOString().slice(0, 16) !== before.toISOString().slice(0, 16))
+  return {
+    values: { category, title, instructions: instructions.trim(), doneLooksLike, points },
+    problems: {
+      category: !CATEGORIES.includes(category) && 'required',
+      title: (title.length < 3 || title.length > 80) && 'length',
+      instructions: (!instructions.trim() || instructions.length > 500) && 'length',
+      doneLooksLike: (typeof done !== 'string' || doneLooksLike.length > 200) && 'length',
+      points: !(Number.isInteger(points) && points >= 5 && points <= 100 && points % 5 === 0) && 'range',
+    },
+  }
+}
+
+/**
+ * H1, a series: the task's words as checkTask checks them, then weekdays (1 to 127, a bit a day, Monday = 1) and dueTime ('HH:MM'
+ * on the family's clock). INVALID with every wrong field, then SCREENED. active is true unless the body says false.
+ */
+export function checkSeries(body) {
+  const { values, problems } = taskWords(body)
+  const { weekdays } = body
+  const dueTime = text(body.dueTime)
   invalid({
-    category: !CATEGORIES.includes(category) && 'required',
-    title: (title.length < 3 || title.length > 80) && 'length',
-    instructions: (!instructions.trim() || instructions.length > 500) && 'length',
-    dueAt: (!valid || (moved && dueAt <= now())) && 'past',
-    points: !(Number.isInteger(points) && points >= 5 && points <= 100 && points % 5 === 0) && 'range',
+    ...problems,
+    weekdays: !(Number.isInteger(weekdays) && weekdays >= 1 && weekdays <= 127) && 'range',
+    dueTime: !/^([01]\d|2[0-3]):[0-5]\d$/.test(dueTime) && 'format',
+    active: body.active !== undefined && typeof body.active !== 'boolean' && 'format',
   })
-  screen(`${title} ${instructions}`)
-  return { category, title, instructions: instructions.trim(), dueAt, points }
+  screen(`${values.title} ${values.instructions} ${values.doneLooksLike}`)
+  return { ...values, weekdays, dueTime, active: body.active ?? true }
 }
 
 // ------------------------------------------------------------------ the engagement rules (17 to 24), ported from the stand-in removed in B4

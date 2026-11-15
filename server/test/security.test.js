@@ -48,6 +48,41 @@ test('the error handler: a foreign key that names a row gone meanwhile (P2003) a
   }
 })
 
+test('a failure is logged without its message: a marker in a many-line error never reaches the log, the frames do (F7)', async () => {
+  const handler = (await import('../src/app.js')).default.router.stack.at(-1).handle
+  const marker = `secret-note-${randomUUID()}`
+  // shaped like a Prisma error: several lines, quoting a value, with a code
+  const err = Object.assign(new Error(`Invalid invocation:\n\n  title: "${marker}"\n  note: "${marker}"\nUnique constraint failed`), { name: 'PrismaClientKnownRequestError', code: 'P2099' })
+  const logged = []
+  const real = console.error
+  console.error = (...parts) => logged.push(parts.join(' '))
+  const sent = []
+  try {
+    const res = { headersSent: false, status: (code) => (sent.push(code), res), json: (body) => (sent.push(body), res) }
+    handler(err, { complete: true, method: 'POST', path: '/api/tasks' }, res, () => sent.push('next'))
+  } finally {
+    console.error = real
+  }
+  assert.deepEqual(sent, [500, { code: 'SERVER' }])
+  assert.equal(logged.length, 1)
+  assert.equal(logged[0].includes(marker), false, 'the message stays out')
+  assert.equal(logged[0].includes('Unique constraint'), false, 'every line of it')
+  assert.match(logged[0], /^POST \/api\/tasks PrismaClientKnownRequestError P2099 \n\s+at /) // what happened and where, enough to find it
+})
+
+test('every /api answer says no-store: a JSON answer, a not-found and a refusal (F3)', async () => {
+  const mom = await family(server.base)
+  const answers = [
+    await mom.api.get('/session'), // 200, with the parent in it
+    await mom.api.get('/nothing'), // 404
+    await as(server.base).get('/tasks'), // 401, signed out
+    await fetch(`${server.base}/tasks`, { method: 'POST' }), // 403, refused by the CSRF check before anything else runs
+  ]
+  assert.deepEqual(answers.map((res) => res.status), [200, 404, 401, 403])
+  for (const res of answers) assert.equal(res.headers.get('cache-control'), 'no-store', String(res.status))
+  assert.equal((await mom.api.post('/me/delete', { password: mom.password })).status, 204)
+})
+
 test('a 30 kb body is 400 INVALID', async () => {
   const res = await api.post('/nothing', { pad: 'a'.repeat(30 * 1024) })
   assert.equal(res.status, 400)
@@ -110,11 +145,11 @@ test('a moderator gets nothing outside reports: every other route is NOT_ALLOWED
     assert.equal((await moderator.post('/session', { identifier: email, password: 'moderator-pass' })).status, 200)
     const x = randomUUID() // an id of nothing: the role is refused before the thing is looked for
     const routes = [
-      ['get', '/tasks'], ['get', `/tasks/${x}`], ['get', `/proofs/${x}/file`], ['get', '/counts/proofs'], ['get', '/counts/results'], ['get', '/counts/requests'],
+      ['get', '/tasks'], ['get', `/tasks/${x}`], ['get', `/proofs/${x}/file`], ['get', '/counts'], ['get', '/today'], ['get', '/tasks/history'], ['get', '/series'], ['post', '/series'], ['put', `/series/${x}`], ['del', `/series/${x}`],
       ['get', '/children'], ['get', `/children/${x}`], ['get', `/children/${x}/progress`], ['get', `/children/${x}/rest-days`],
       ['get', '/growth'], ['get', '/growth/children'], ['get', '/stickers'], ['get', '/leaderboard'], ['get', '/rewards'], ['get', '/requests'], ['get', '/settings'],
       ['post', '/tasks'], ['post', `/tasks/${x}/proofs`], ['post', `/tasks/${x}/review`], ['post', '/tasks/seen'], ['post', '/children'], ['post', `/children/${x}/rest-days`],
-      ['post', '/rewards'], ['post', '/requests'], ['post', `/requests/${x}/answer`], ['post', '/me/delete'], ['post', '/reports'],
+      ['post', '/rewards'], ['post', '/requests'], ['post', `/requests/${x}/answer`], ['post', '/me/delete'], ['post', '/reports'], ['post', '/me/sessions/end'], ['post', `/children/${x}/sessions/end`],
       ['put', `/tasks/${x}`], ['put', '/pin'], ['put', `/children/${x}/password`], ['put', `/children/${x}/quest`], ['put', '/me/password'], ['put', '/settings'], ['put', '/settings/country'],
       ['patch', '/me'], ['patch', `/children/${x}`], ['del', `/tasks/${x}`], ['del', `/children/${x}`], ['del', `/rewards/${x}`],
     ]

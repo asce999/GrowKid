@@ -1,8 +1,13 @@
+import { zoneOf } from './countries.js'
+
 /** Rows to API shapes (plan section 6): an optional field is left out, never null, and a hash or tokenVersion never leaves. */
 
-/** A User as index.js documents it. */
-export const asUser = ({ id, role, name, email, username }) => ({
-  id, role, name, email: email ?? undefined, username: username ?? undefined,
+/**
+ * A User as index.js documents it. P13: zone is the family's time zone, so the screens count days as the server does (rule 25): a
+ * parent's from their country, a child's from their parent's (read with the parent's country). A moderator has none.
+ */
+export const asUser = ({ id, role, name, email, username, country, parent }) => ({
+  id, role, name, email: email ?? undefined, username: username ?? undefined, zone: zoneOf(country ?? parent?.country),
 })
 
 /** A Child as index.js documents it. */
@@ -42,6 +47,8 @@ export const asTask = (row, { files = false } = {}) => ({
   points: row.points,
   status: row.status,
   createdAt: row.createdAt.toISOString(),
+  doneLooksLike: row.doneLooksLike ?? '', // H5
+  seriesId: row.seriesId ?? undefined, // H2: made by a repeating series
   proofs: row.proofs.map((proof) => asProof(proof, files)),
   resultSeen: row.resultSeen,
   pinned: row.pinned,

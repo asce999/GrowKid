@@ -2,7 +2,7 @@
 // would notice first, so each rule has a line here that fails if it breaks.
 import assert from 'node:assert/strict'
 import {
-  STICKERS, approvedInWeek, balanceOf, dayKey, progress, questCompletedBy, questOf, recordOf, score, stickers, weekKey,
+  STICKERS, approvedInWeek, balanceOf, dayKey, progress, questCompletedBy, questOf, reached, recordOf, score, stickers, weekKey,
 } from '../src/scoring.js'
 
 const NOW = new Date(2026, 9, 20, 15, 0) // a Tuesday afternoon; days below count back from it
@@ -109,6 +109,18 @@ assert.equal(stickers(three).find((s) => s.id === 'level-10').earnedAt, undefine
 assert.ok(earned(run(1), { questAwards: [{ earnedAt: run(1)[0].proofs[0].review.at }] }).includes('quest-1'))
 assert.ok(!earned(run(1)).includes('quest-1'))
 assert.equal(recordOf(Array.from({ length: 7 }, () => done(40)), NOW).approved, 7) // the record the stickers are measured by
+
+// an approval works the stickers out in one pass (reached), where stickers() replays every approval: on each list above it is the same set
+const ids = (found) => found.map((s) => s.id)
+const lists = [
+  [], [done(9)], three, broken, skipped, answered, run(3), run(7), run(30), Array.from({ length: 25 }, () => done(40)),
+  [done(6), done(5), done(4), task({ due: 3 }), done(0)], run(9).map((t) => ({ ...t, points: 100 })), kinds.map((category) => done(40, { category })),
+  [done(40), done(40), done(40), done(40), secondTry(), done(40)], [done(40), done(40), done(40), done(40), secondTry(), secondTry()],
+]
+for (const tasks of lists) assert.deepEqual(ids(reached(tasks, NOW)), earned(tasks))
+assert.deepEqual(ids(reached(skipped, NOW, { rest })), earned(skipped, { rest }))
+assert.deepEqual(ids(reached(run(1), NOW, { quests: 1 })), earned(run(1), { questAwards: [{ earnedAt: at(0, 14) }] }))
+assert.ok(ids(reached(run(30), NOW)).includes('streak-30') && !ids(reached(run(1), NOW)).includes('quest-1'))
 
 // ------------------------------------------------------------------ progress by week
 // NOW is a Tuesday, so this week began yesterday. Proof sent on Sunday and approved on Monday

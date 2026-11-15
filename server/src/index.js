@@ -19,10 +19,24 @@ try {
 }
 if (!/^\d+$/.test(env.PORT ?? '')) fail('PORT must be a number')
 if (!path.isAbsolute(env.UPLOAD_DIR ?? '')) fail('UPLOAD_DIR must be an absolute path')
+// F8: proof files are children's photos, and a synced folder is copied to another company's servers. The repository counts too:
+// it is where a careless path lands, and it may itself be synced.
+const within = (parent) => {
+  const rest = path.relative(path.resolve(parent), path.resolve(env.UPLOAD_DIR))
+  return rest !== '..' && !rest.startsWith(`..${path.sep}`) && !path.isAbsolute(rest) // '' is the folder itself; absolute is another drive
+}
+if (within(path.join(import.meta.dirname, '..', '..'))) fail('UPLOAD_DIR must be outside the repository')
+if ([env.OneDrive, env.OneDriveConsumer, env.OneDriveCommercial].some((folder) => folder && within(folder))) {
+  fail('UPLOAD_DIR must not be inside a OneDrive folder, which is copied to another company')
+}
 await mkdir(env.UPLOAD_DIR, { recursive: true })
 
 // Imported only now, so app.js can rely on a checked environment.
 const { default: app } = await import('./app.js')
+// C5: before any upload can start, so a file being written is never taken for one left behind. Only the count is logged.
+const { sweepOrphans } = await import('./files.js')
+const swept = await sweepOrphans().catch((error) => console.error(`GrowKid could not check the upload folder for files left behind (${error.code ?? error.name})`)) // housekeeping: the server still starts
+if (swept) console.log(`GrowKid removed ${swept} proof file${swept === 1 ? '' : 's'} that no proof names`)
 const server = app.listen(Number(env.PORT), '127.0.0.1', (err) => {
   if (err) fail(`cannot listen (${err.code ?? 'error'})`)
   console.log(`GrowKid server listening on 127.0.0.1:${server.address().port}`)

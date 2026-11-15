@@ -6,7 +6,7 @@ import { Message } from './states.jsx'
 /**
  * One proof: the photo, video or file, and the note. The family's own pictures are the real
  * imagery, so a photo is never cropped. Large for the parent; small for the child, who made it.
- * label says who sent it and for which task. onRetry reloads the task if the file will not show.
+ * label says who sent it and for which task. P9: a photo loads when it nears the screen; a video fetches only its first details. onRetry reloads the task if the file will not show.
  */
 export default function Proof({ proof, label, small = false, onRetry }) {
   const [broken, setBroken] = useState(false)
@@ -28,9 +28,9 @@ export default function Proof({ proof, label, small = false, onRetry }) {
           )}
         </Message>
       ) : image ? (
-        <img src={proof.fileUrl} alt={label} className={look} onError={() => setBroken(true)} />
+        <img src={proof.fileUrl} alt={label} className={look} loading="lazy" decoding="async" onError={() => setBroken(true)} />
       ) : video ? (
-        <video src={proof.fileUrl} aria-label={label} className={look} controls onError={() => setBroken(true)} />
+        <video src={proof.fileUrl} aria-label={label} className={look} controls preload="metadata" onError={() => setBroken(true)} />
       ) : proof.fileType ? (
         <a href={proof.fileUrl} target="_blank" rel="noreferrer" className="btn btn-secondary max-w-full">
           <FileText className="size-5 shrink-0" aria-hidden="true" />

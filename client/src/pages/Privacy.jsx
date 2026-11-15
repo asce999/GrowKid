@@ -18,6 +18,8 @@ function Part({ id, title, children }) {
 }
 
 const link = 'font-medium text-navy-800 underline underline-offset-4'
+// C8: the date this page last changed. A parent's consent is recorded against it: server/src/rules.js PRIVACY_VERSION holds the same date.
+const UPDATED = '15 November 2026'
 
 export default function Privacy() {
   const signedIn = Boolean(useSession((s) => s.user))
@@ -25,6 +27,7 @@ export default function Privacy() {
     <div className="max-w-prose">
       <title>Safety and privacy – GrowKid</title>
       <h1 className="type-headline">Safety and privacy</h1>
+      <p className="type-small muted mt-1">Updated {UPDATED}</p>
       <p className="mt-2">
         This page says who can see what in GrowKid, what is stored and where, and how to delete it. It is written so that a child can
         read it too.
@@ -61,8 +64,9 @@ export default function Privacy() {
         <p>A task may not ask a child to keep a secret, take a dare, or hide something from their parent.</p>
         <p>
           GrowKid refuses a task whose title or instructions use words such as “secret”, “dare” or “don’t tell”, and it says which word
-          it found. A short list of words cannot catch everything, so if a task worries you, a child or a parent can report it from the
-          task’s page.
+          it found. It checks every other thing a parent writes for a child in the same way: rewards, a quest’s surprise, a cheer, and
+          the note a parent sends proof back with or declines a reward with. It looks for whole words only, in any language. A short
+          list of words cannot catch everything, so if a task worries you, a child or a parent can report it from the task’s page.
         </p>
       </Part>
 
@@ -80,6 +84,11 @@ export default function Privacy() {
 
       <Part id="moderator-title" title="What a moderator can and cannot see">
         <p>A moderator reads reports and can do one thing: answer them. A moderator cannot open any family’s pages.</p>
+        <p>
+          If a report shows that a child may not be safe, the person who runs GrowKid can pause the family that sent it. While a
+          family is paused, nobody in it can sign in, and nothing of theirs is deleted or changed: it is kept as it was until a person
+          decides what happens next.
+        </p>
         <p className="font-semibold">A moderator can see:</p>
         <ul className="grid list-disc gap-1 pl-5">
           <li>the words of the report</li>
@@ -110,26 +119,36 @@ export default function Privacy() {
       <Part id="stored-title" title="What is stored, and where">
         <p>
           Everything is stored on the GrowKid server, not on your device: for a parent, a name, an email and a country; for a child, a
-          name and a username; and every task, proof photo, video and file, note, score and report. The country decides where each
+          name and a username; and every task, repeating task, proof photo and video, note, score and report. The country decides where each
           day starts and ends.
         </p>
         <p>
           Passwords are hashed before they are saved, which means they are scrambled in a way that cannot be undone, so nobody can read
-          one back. Proof files stay on the GrowKid server’s own disk, and only the child and their parent can open them. Photos and
-          Photos and most phone videos are saved without the place they were taken or the camera’s details; a photo keeps only which
-          way up it goes. A WebM video is kept as sent, and so is the GPS route that some action cameras record alongside the picture.
+          one back. Proof files stay on the GrowKid server’s own disk, and only the child and their parent can open them.
+          Proof can be a photo or a video. Photos and most phone videos are saved without the place they were taken, the camera’s
+          details or the time they were made, and under a plain name such as “photo.jpg”; a photo keeps only which way up it goes. A
+          WebM video is kept as sent, and so is the GPS route that some action cameras record alongside the picture. GrowKid no longer
+          takes PDF files, because one can carry its author’s details and other pictures; a PDF sent before can still be downloaded.
+        </p>
+        <p>
+          When a parent signs up, and again for each child they add, they tick a box to say they are the child’s parent or guardian
+          and agree to what this page describes. GrowKid records when they ticked it and which version of this page they saw. It
+          cannot check that the person really is the parent.
         </p>
         <p>
           GrowKid sets no advertising or analytics cookies and has no trackers. It sets one cookie, which keeps you signed in on this
-          device for up to 7 days, and signing out removes it. The one thing it asks another company for is its typefaces: this page
-          loads Lexend and Baloo 2 from Google Fonts, so your browser asks Google’s servers for them.
+          device for up to 7 days, and signing out removes it. If a parent turns on notifications in Settings, that choice is kept in that
+          browser only, and a notification never says a name or what is waiting. A parent can also sign out every other device from Settings, and sign a
+          child out everywhere from the child’s page. A password that is very common, or that has the person’s name in it, is not
+          accepted, and sign-in pauses for a while after too many wrong tries. It asks no other company for anything: even its typefaces come from
+          GrowKid itself.
         </p>
       </Part>
 
       <Part id="delete-title" title="How to delete it, and what deletion keeps">
         <p>
           A parent can delete everything from Settings, by typing their password. That deletes the parent’s account, every child’s
-          sign-in, every task and every proof with its file, every score and sticker, and every report the family sent that a
+          sign-in, every task and repeating task, every proof with its file, every score and sticker, and every report the family sent that a
           moderator has answered. No copy is kept. Removing one child from Family deletes the same things for that child.
         </p>
         <p>

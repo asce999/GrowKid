@@ -3,11 +3,12 @@ import { flushSync } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { TriangleAlert } from 'lucide-react'
 import * as api from '../api/index.js'
+import { NOTICE, canNotify, setNudge, wantsNudge } from '../api/notify.js'
 import { Field, PasswordField, Requirement } from '../components/Field.jsx'
 import { ErrorState, Message, PageLoading } from '../components/states.jsx'
 import { noticeExpiry, useLoad } from '../hooks/useLoad.js'
 import { useSession } from '../store/session.js'
-import { focusFirstInvalid } from '../utils/forms.js'
+import { focusFirstInvalid, refusedPassword } from '../utils/forms.js'
 import { errorText } from '../utils/messages.js'
 import { rules } from '../utils/rules.js'
 
@@ -70,18 +71,19 @@ function Password() {
   const [state, setState] = useState({})
   const errors = {
     current: values.current ? null : 'Type the password you sign in with now.',
-    next: rules.parentPassword(values.next),
+    next: rules.parentPassword(values.next) ?? (state.refused?.value === values.next ? state.refused.text : null),
   }
   const change = (field) => (e) => {
     setValues((v) => ({ ...v, [field]: e.target.value }))
-    setState((s) => ({ tried: s.tried, busy: s.busy }))
+    setState((s) => ({ tried: s.tried, busy: s.busy, refused: s.refused }))
   }
 
   async function submit(event) {
     event.preventDefault()
+    const form = event.currentTarget
     if (errors.current || errors.next) {
       focusFirstInvalid(event.currentTarget)
-      return setState({ tried: true })
+      return setState((s) => ({ tried: true, refused: s.refused }))
     }
     setState({ busy: true })
     try {
@@ -90,7 +92,10 @@ function Password() {
       setState({ saved: true })
     } catch (failure) {
       noticeExpiry(failure)
-      setState(failure.code === 'WRONG_PASSWORD' ? { wrong: true } : { problem: errorText(failure) })
+      const refused = refusedPassword(failure, 'next', values.next)
+      // drawn before the focus moves to the refused field
+      flushSync(() => setState(refused ? { tried: true, refused } : failure.code === 'WRONG_PASSWORD' ? { wrong: true } : { problem: errorText(failure) }))
+      if (refused) focusFirstInvalid(form)
     }
   }
 
@@ -125,6 +130,64 @@ function Password() {
         {state.busy ? 'Changing…' : 'Change password'}
       </button>
     </form>
+  )
+}
+
+/** Rule 26, L5: signs the parent out on every other device. This one gets a fresh cookie and stays signed in. */
+function OtherDevices() {
+  const dialog = useRef(null)
+  const [state, setState] = useState({})
+
+  async function end() {
+    setState({ busy: true })
+    try {
+      await api.endOtherSessions()
+      dialog.current.close()
+      setState({ done: true })
+    } catch (failure) {
+      noticeExpiry(failure)
+      setState(dialog.current?.open ? { problem: errorText(failure) } : {}) // closed meanwhile: nothing to show it in
+    }
+  }
+
+  return (
+    <div className="grid max-w-prose gap-4">
+      <p className="muted">
+        Use this if you signed in on a device you no longer use, or one that is lost. You stay signed in here, and your password
+        stays the same.
+      </p>
+      {state.done && (
+        <Message tone="success" role="status">
+          Your other devices are signed out.
+        </Message>
+      )}
+      <button type="button" className="btn btn-secondary justify-self-start" onClick={() => dialog.current.showModal()}>
+        Sign out other devices
+      </button>
+
+      <dialog ref={dialog} className="dialog" aria-labelledby="devices-title" onClose={() => setState((s) => (s.done ? s : {}))}>
+        <h2 id="devices-title" className="type-subheading">
+          Sign out your other devices?
+        </h2>
+        <p className="mt-2">
+          Every other phone, tablet and computer signed in to your account is signed out. You stay signed in on this one. Your
+          children’s sign-ins are not changed.
+        </p>
+        {state.problem && (
+          <Message tone="danger" alert className="mt-4">
+            {state.problem}
+          </Message>
+        )}
+        <div className="mt-6 grid gap-3 sm:flex">
+          <button type="button" className="btn btn-secondary" onClick={() => dialog.current.close()}>
+            Leave them signed in
+          </button>
+          <button type="button" className="btn btn-primary" disabled={state.busy} onClick={end}>
+            {state.busy ? 'Signing out…' : 'Sign out other devices'}
+          </button>
+        </div>
+      </dialog>
+    </div>
   )
 }
 
@@ -218,6 +281,41 @@ function Leaderboard({ settings }) {
       <p className="type-small muted">
         Each child sees their brothers’ and sisters’ first names and how many of their tasks were approved this week. Nothing else. It
         starts again every Monday, and it only appears with two or more children.
+      </p>
+      {state.problem && (
+        <Message tone="danger" alert>
+          {state.problem}
+        </Message>
+      )}
+      {state.saved && (
+        <Message tone="success" role="status">
+          Saved.
+        </Message>
+      )}
+    </div>
+  )
+}
+
+/** H12: a notification on this computer when something is waiting. The browser asks for permission at this tap only. */
+function Nudge() {
+  const [on, setOn] = useState(wantsNudge)
+  const [state, setState] = useState({})
+  if (!canNotify()) return <p className="muted max-w-prose">This browser cannot show notifications. The number in the tab’s title still shows what is waiting.</p>
+  async function change(event) {
+    const asked = event.target.checked
+    const now = await setNudge(asked)
+    setOn(now)
+    setState(asked && !now ? { problem: 'The browser did not allow notifications. You can allow them in its site settings, then try again.' } : { saved: true })
+  }
+  return (
+    <div className="grid max-w-prose gap-3">
+      <label className="flex min-h-11 items-start gap-3">
+        <input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={on} onChange={change} />
+        <span>Tell me on this computer when something is waiting</span>
+      </label>
+      <p className="type-small muted">
+        While GrowKid is open in a tab you are not looking at, a notice says “{NOTICE}” when a proof or a request comes in. It never
+        says a name or what is waiting, and it goes through no other company. It is kept in this browser only.
       </p>
       {state.problem && (
         <Message tone="danger" alert>
@@ -356,6 +454,12 @@ export default function Settings() {
             </h2>
             <Password />
           </section>
+          <section className="mt-8 border-t pt-6" aria-labelledby="devices-section-title">
+            <h2 id="devices-section-title" className="type-subheading mb-4">
+              Signed-in devices
+            </h2>
+            <OtherDevices />
+          </section>
           <section className="mt-8 border-t pt-6" aria-labelledby="country-title">
             <h2 id="country-title" className="type-subheading mb-4">
               Country
@@ -367,6 +471,12 @@ export default function Settings() {
               Family leaderboard
             </h2>
             <Leaderboard settings={loaded.data[1]} />
+          </section>
+          <section className="mt-8 border-t pt-6" aria-labelledby="nudge-title">
+            <h2 id="nudge-title" className="type-subheading mb-4">
+              Notifications
+            </h2>
+            <Nudge />
           </section>
           <section className="mt-8 border-t pt-6" aria-labelledby="delete-section-title">
             <h2 id="delete-section-title" className="type-subheading mb-4">

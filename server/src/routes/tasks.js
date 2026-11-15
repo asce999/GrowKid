@@ -1,14 +1,15 @@
 import { randomUUID } from 'node:crypto'
 import { Router } from 'express'
 import multer from 'multer'
-import { only, ownChild, signedIn } from '../auth.js'
+import { only, ownChild, proofLimit, signedIn } from '../auth.js'
 import { now } from '../clock.js'
 import { db, loadChild, lockChild, taskWith } from '../db.js'
 import { ApiError, invalid, refuse, text } from '../errors.js'
-import { removeFiles, safeName, saveFile, sendProofFile, sniff, strip } from '../files.js'
-import { CHEER_KINDS, MAX_FILE_BYTES, OPEN, checkTask } from '../rules.js'
-import { questCompletedBy, stickers } from '../scoring.js'
+import { NAMES, hasRoom, removeFiles, saveFile, sendProofFile, sniff, strip } from '../files.js'
+import { CHEER_KINDS, FREE_BYTES, MAX_FILE_BYTES, OPEN, STORAGE_BYTES, cap, checkTask, screen } from '../rules.js'
+import { questCompletedBy, reached } from '../scoring.js'
 import { asTask } from '../shape.js'
+import { childrenOf, makeDueTasks } from './series.js'
 
 /** Tasks, proof, review and files (plan B2). Ported from the stand-in removed in B4. */
 export const tasks = Router()
@@ -25,20 +26,53 @@ export function visible(req) {
 const visibleTask = async (req, id) =>
   (await db.task.findFirst({ where: { id: text(id), ...visible(req) }, include: taskWith })) ?? refuse('NOT_FOUND')
 
-/** Every task this user may see, soonest due first, as listTasks gives them (proofs without fileUrl). */
+const DAY = 86_400_000
+/** P2: how long an approved task stays in the task list after its approval. */
+const WINDOW_DAYS = 30
+const soonestFirst = [{ dueAt: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }]
+
+/**
+ * P2, the task list's window, as a query: not approved yet, or a result the child has not seen, or approved in the last 30 days.
+ * inWindow below is the same rule over a task already loaded; a test holds the two together.
+ */
+const windowWhere = (time) => ({
+  OR: [{ status: { not: 'approved' } }, { resultSeen: false }, { proofs: { some: { result: 'approved', reviewedAt: { gte: new Date(+time - WINDOW_DAYS * DAY) } } } }],
+})
+/** P2 over a task as asTask gives it. */
+export const inWindow = (task, time) =>
+  task.status !== 'approved' || !task.resultSeen || task.proofs.some((p) => p.review?.result === 'approved' && new Date(p.review.at) >= +time - WINDOW_DAYS * DAY)
+/** The order the task list is in, soonest due first, for tasks already loaded. */
+export const bySoonest = (a, b) => a.dueAt.localeCompare(b.dueAt) || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)
+
+/** The tasks this user may see in the window (P2), soonest due first, as listTasks gives them (proofs without fileUrl). */
 async function list(req) {
-  const rows = await db.task.findMany({ where: visible(req), include: taskWith, orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }] })
+  const rows = await db.task.findMany({ where: { AND: [visible(req), windowWhere(now())] }, include: taskWith, orderBy: soonestFirst })
   return rows.map((row) => asTask(row))
 }
+
+/** L6: how many of a child's tasks are not approved yet, which is what the task cap counts. */
+const unapproved = (childId) => db.task.count({ where: { childId, status: { not: 'approved' } } })
 
 /** Why a conditional write on a task matched nothing: the task is gone, or no longer the sender's (NOT_FOUND); or no longer in the status the write needed (LOCKED). */
 const whyNot = async (client, where) => ((await client.task.count({ where })) ? 'LOCKED' : 'NOT_FOUND')
 
 // ------------------------------------------------------------------ tasks
 
-/** listTasks */
+/** listTasks (P2): the window, not the whole history. H2: today's tasks from repeating series are made first. */
 tasks.get('/tasks', async (req, res) => {
+  visible(req) // the role check, before anything is made
+  await makeDueTasks(await childrenOf(req))
   res.json(await list(req))
+})
+
+/** listHistory (P2, P8): approved tasks this user may see, newest due first, `limit` (1 to 50, default 50) from `offset`. Before /tasks/:id, which would take "history" for an id. */
+tasks.get('/tasks/history', async (req, res) => {
+  const where = { AND: [visible(req), { status: 'approved' }] }
+  const number = (value, fallback) => (/^\d{1,6}$/.test(value ?? '') ? Number(value) : fallback)
+  const offset = number(req.query.offset, 0)
+  const limit = Math.min(50, Math.max(1, number(req.query.limit, 50)))
+  const rows = await db.task.findMany({ where, include: taskWith, orderBy: [{ dueAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }], skip: offset, take: limit })
+  res.json(rows.map((row) => asTask(row)))
 })
 
 /** getTask: with fileUrl on its proofs. */
@@ -51,6 +85,7 @@ tasks.post('/tasks', async (req, res) => {
   const body = req.body ?? {}
   const child = await ownChild(req, text(body.childId))
   const values = checkTask(body)
+  cap('tasks', await unapproved(child.id))
   const row = await db.task.create({ data: { ...values, childId: child.id, createdAt: now() }, include: taskWith })
   res.status(201).json(asTask(row))
 })
@@ -63,6 +98,7 @@ tasks.put('/tasks/:id', async (req, res) => {
   const body = req.body ?? {}
   const child = await ownChild(req, text(body.childId))
   const values = checkTask(body, task.dueAt)
+  if (child.id !== task.childId) cap('tasks', await unapproved(child.id)) // L6: a moved task counts against the child it goes to
   // Conditional, so a proof sent while this request was checking still wins.
   const { count } = await db.task.updateMany({
     where: { id: task.id, status: 'todo' },
@@ -95,11 +131,22 @@ const parse = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_
 /** multer's own errors (the limits) reach app.js as they are. A body its parser cannot read at all (no boundary, cut off) is an unreadable proof too. */
 const upload = (req, res, next) => parse(req, res, (err) => next(err && !(err instanceof multer.MulterError) ? new ApiError('INVALID', { proof: 'format' }) : err))
 
-/** Runs before multer, so a refused upload writes nothing: a child's own task, still open (rule 2). */
-async function mayReceiveProof(req, _res, next) {
+// L8: the children whose upload is being received now. A proof is held in memory and stripping copies it, so a slow upload keeps
+// up to 50 MB for as long as the request lasts: at most 4 at once, and 1 per child.
+const receiving = new Set()
+
+/**
+ * Runs before multer, so a refused upload writes nothing: a child's own task, still open (rule 2), then a free slot (L8), which is
+ * given back when the response closes, however the request ends.
+ */
+async function mayReceiveProof(req, res, next) {
   const me = only(req, 'child')
   const task = (await db.task.findFirst({ where: { id: text(req.params.id), childId: me.id } })) ?? refuse('NOT_FOUND')
   if (!OPEN.includes(task.status)) refuse('LOCKED')
+  if (receiving.size >= 4 || receiving.has(me.id)) refuse('TOO_MANY')
+  if (res.destroyed || req.socket.destroyed) return // the caller left while the task was looked up: 'close' has fired, so a slot taken now would never come back
+  receiving.add(me.id)
+  res.on('close', () => receiving.delete(me.id))
   req.task = task
   next()
 }
@@ -109,7 +156,7 @@ async function mayReceiveProof(req, _res, next) {
  * file on disk, then one transaction that takes the child's lock first. That serialises it with B1's erase(), which locks the same
  * row, so a deleted family never keeps a file. Nothing stays on disk when the transaction fails.
  */
-tasks.post('/tasks/:id/proofs', mayReceiveProof, upload, async (req, res) => {
+tasks.post('/tasks/:id/proofs', proofLimit, mayReceiveProof, upload, async (req, res) => {
   const { task, file } = req
   const note = text(req.body?.note)
   invalid({ proof: !file && !note.trim() && 'required', note: note.length > 500 && 'length' })
@@ -118,7 +165,11 @@ tasks.post('/tasks/:id/proofs', mayReceiveProof, upload, async (req, res) => {
   if (file) {
     const type = sniff(file.buffer) ?? refuse('FILE_TYPE')
     const bytes = strip(file.buffer, type)
-    Object.assign(proof, { fileName: safeName(file.originalname), fileType: type, fileSize: bytes.length })
+    Object.assign(proof, { fileName: NAMES[type], fileType: type, fileSize: bytes.length }) // C3: never the device's name
+    // L6 and L9, before anything is written: the family's files with this one, then the room left on the drive
+    const held = await db.proof.aggregate({ _sum: { fileSize: true }, where: { task: { child: { parentId: req.user.parentId } } } })
+    if ((held._sum.fileSize ?? 0) + bytes.length > STORAGE_BYTES) refuse('QUOTA', { quota: 'storage' })
+    if (!(await hasRoom(process.env.UPLOAD_DIR, bytes.length, FREE_BYTES))) refuse('QUOTA', { quota: 'disk' })
     await saveFile(id, bytes)
   }
   const row = await db
@@ -151,7 +202,8 @@ tasks.get('/proofs/:id/file', async (req, res) => {
 /**
  * An approval (recordAwards): completes the child's quest for the week the proof was sent in when it reaches the
  * target, from the quest as it is now and before the stickers are worked out, so a quest sticker belongs to this same approval.
- * Then records every sticker the child now has and did not. Runs inside the review's transaction, after the task is approved.
+ * Then records every sticker the child's record has now reached and they do not hold: one pass over the tasks, not a replay of every
+ * approval, so an approval stays quick however long the history. Runs inside the review's transaction, after the task is approved.
  */
 async function recordApproval(tx, task, at) {
   const snapshot = await loadChild(tx, task.childId)
@@ -164,7 +216,7 @@ async function recordApproval(tx, task, at) {
     await tx.quest.update({ where: { childId: task.childId }, data: { surprise: null } }) // opened now
     questAwards.unshift({ week, target, bonus, surprise, earnedAt: at.toISOString(), taskId: task.id, taskTitle: task.title })
   }
-  const earned = stickers(snapshot.tasks, { rest: snapshot.rest, questAwards, zone }).filter((s) => s.earnedAt && !snapshot.awards[s.id])
+  const earned = reached(snapshot.tasks, at, { rest: snapshot.rest, quests: questAwards.length, zone }).filter((s) => !snapshot.awards[s.id])
   const data = earned.map((s) => ({ childId: task.childId, stickerId: s.id, earnedAt: at, taskId: task.id, taskTitle: task.title }))
   await tx.award.createMany({ data, skipDuplicates: true })
 }
@@ -195,6 +247,7 @@ tasks.post('/tasks/:id/review', async (req, res) => {
       cheer: kind !== null && !CHEER_KINDS.includes(kind) && 'kind',
       line: (typeof typed !== 'string' || line.length > 120) && 'length',
     })
+    screen(`${note} ${line}`) // C7: both reach the child; only one is ever set (a send-back has no cheer), so the word says where it is
     const at = now()
     // Conditional on the status the checks saw: 0 rows means another answer landed first.
     const { count } = await tx.task.updateMany({ where: { id: task.id, status: 'review' }, data: { status: result, resultSeen: false } }) // rule 4: new to the child until seen
@@ -238,14 +291,14 @@ tasks.put('/pin', async (req, res) => {
 
 // ------------------------------------------------------------------ counts
 
-/** countProofsWaiting */
-tasks.get('/counts/proofs', async (req, res) => {
-  const me = only(req, 'parent')
-  res.json(await db.task.count({ where: { status: 'review', child: { parentId: me.id } } }))
-})
-
-/** countNewResults */
-tasks.get('/counts/results', async (req, res) => {
-  const me = only(req, 'child')
-  res.json(await db.task.count({ where: { childId: me.id, resultSeen: false } }))
+/** getCounts (P3): the navigation's numbers in one call. A parent's proofs and reward requests waiting; a child's new results. */
+tasks.get('/counts', async (req, res) => {
+  const me = signedIn(req)
+  if (me.role === 'child') return res.json({ results: await db.task.count({ where: { childId: me.id, resultSeen: false } }) })
+  if (me.role !== 'parent') refuse('NOT_ALLOWED')
+  const [proofs, requests] = await Promise.all([
+    db.task.count({ where: { status: 'review', child: { parentId: me.id } } }),
+    db.rewardRequest.count({ where: { parentId: me.id, status: 'requested' } }),
+  ])
+  res.json({ proofs, requests })
 })

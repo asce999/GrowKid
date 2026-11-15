@@ -107,7 +107,7 @@ test('the moderator script creates, then updates, a moderator from the environme
   assert.equal((await as(server.base).post('/session', { identifier: email, password: second })).status, 200)
   assert.equal(await db.user.count({ where: { email: email.toLowerCase() } }), 1)
 
-  for (const [env, why] of [[{ MODERATOR_EMAIL: email, MODERATOR_PASSWORD: 'too short' }, 'short'], [{ MODERATOR_EMAIL: 'not an email', MODERATOR_PASSWORD: second }, 'email'], [{ MODERATOR_EMAIL: email, MODERATOR_PASSWORD: 'x'.repeat(73) }, 'long']]) {
+  for (const [env, why] of [[{ MODERATOR_EMAIL: email, MODERATOR_PASSWORD: 'x'.repeat(19) }, 'short: 19 of the 20 characters'], [{ MODERATOR_EMAIL: 'not an email', MODERATOR_PASSWORD: second }, 'email'], [{ MODERATOR_EMAIL: email, MODERATOR_PASSWORD: 'x'.repeat(73) }, 'long']]) {
     const out = run('scripts/moderator.js', env)
     assert.deepEqual([out.status, out.stdout], [1, ''], why)
     assert.equal(out.stderr.includes(second), false)

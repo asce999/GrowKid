@@ -7,6 +7,7 @@ import { EmptyState, ErrorState, Message, PageLoading, Result } from '../compone
 import { AddChildFirst, Points } from '../components/Task.jsx'
 import { noticeExpiry, useLoad } from '../hooks/useLoad.js'
 import { whenText } from '../utils/format.js'
+import { dueThisWeek } from '../utils/tasks.js'
 import { focusFirstInvalid } from '../utils/forms.js'
 import { errorText } from '../utils/messages.js'
 
@@ -14,14 +15,15 @@ import { errorText } from '../utils/messages.js'
 // each child's weekly quest. Nothing here reloads the page after a change (that would lose the
 // parent's place): the new figures are put in place instead.
 
-const load = () => Promise.all([api.listChildren(), api.listRewards(), api.listRequests(), api.listGrowth()])
+const load = () => Promise.all([api.listChildren(), api.listRewards(), api.listRequests(), api.listGrowth(), api.listTasks()])
 
 const screenedText = (word) => `Rewards cannot use the word “${word}”.`
 
 /** Requests waiting, oldest first, and the last ten that were answered. */
-function Requests({ requests, growth, refresh }) {
+function Requests({ requests, growth, refresh, place }) {
   const [declining, setDeclining] = useState(null) // the request whose decline note is open
   const [note, setNote] = useState('')
+  const [noteError, setNoteError] = useState(null)
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState(null)
   const waiting = requests.filter((r) => r.status === 'requested').sort((a, b) => a.requestedAt.localeCompare(b.requestedAt))
@@ -33,7 +35,13 @@ function Requests({ requests, growth, refresh }) {
   async function answer(request, outcome, text = '') {
     setBusy(true)
     try {
-      await api.answerRequest(request.id, outcome, text)
+      const answered = await api.answerRequest(request.id, outcome, text)
+      // P12: the answer in place, not the page fetched again; a decline gives the points back to the child's balance
+      place(([family, rewards, all, growth]) => {
+        const child = growth[answered.childId]
+        const back = outcome === 'declined' && child ? { ...growth, [answered.childId]: { ...child, balance: child.balance + answered.cost } } : growth
+        return [family, rewards, all.map((r) => (r.id === answered.id ? answered : r)), back]
+      })
       setResult({
         tone: 'success',
         text:
@@ -43,14 +51,23 @@ function Requests({ requests, growth, refresh }) {
       })
     } catch (error) {
       noticeExpiry(error)
+      if (error.code === 'SCREENED') {
+        // C7: the note stays open, marked, so the parent can change the word and decline again
+        flushSync(() => {
+          setNoteError(`The note cannot use “${error.fields.word}”. Change it, then decline.`)
+          setBusy(false)
+        })
+        document.getElementById(`requests-${request.id}`)?.querySelector('textarea')?.focus() // the marked field, read out with its error
+        return
+      }
       // answered already, in another tab or on another device: show it as it stands
       setResult(
         error.code === 'REVIEWED'
           ? { tone: 'info', text: 'That request had already been answered. This is how it stands now.' }
           : { tone: 'danger', text: errorText(error) },
       )
+      await refresh() // the list on screen was out of date
     }
-    await refresh()
     window.dispatchEvent(new Event('growkid:counts')) // the page stays put, so the navigation's number has to be told
     setDeclining(null)
     setBusy(false)
@@ -73,7 +90,7 @@ function Requests({ requests, growth, refresh }) {
         ) : (
           <ul className="mt-3 overflow-hidden rounded-card border bg-white">
             {waiting.map((request) => (
-              <li key={request.id} className="border-b px-4 py-3 last:border-b-0 sm:px-6">
+              <li key={request.id} id={`requests-${request.id}`} className="border-b px-4 py-3 last:border-b-0 sm:px-6">
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                   <p className="min-w-0 flex-1 basis-48 font-medium break-words">
                     {request.childName} asked for {request.title}
@@ -99,8 +116,12 @@ function Requests({ requests, growth, refresh }) {
                       maxLength={200}
                       name="note"
                       autoFocus
+                      error={noteError}
                       value={note}
-                      onChange={(event) => setNote(event.target.value)}
+                      onChange={(event) => {
+                        setNote(event.target.value)
+                        setNoteError(null)
+                      }}
                     />
                     <div className="flex flex-wrap items-center gap-3">
                       <button className="btn btn-primary" disabled={busy}>
@@ -123,6 +144,7 @@ function Requests({ requests, growth, refresh }) {
                       disabled={busy}
                       onClick={() => {
                         setNote('')
+                        setNoteError(null)
                         setDeclining(request.id)
                       }}
                     >
@@ -163,7 +185,7 @@ function Requests({ requests, growth, refresh }) {
 const BLANK_REWARD = { title: '', cost: '' }
 
 /** The rewards, and the one form below them that adds a reward or changes one. */
-function RewardList({ rewards, refresh }) {
+function RewardList({ rewards, refresh, place }) {
   const [values, setValues] = useState(BLANK_REWARD)
   const [editing, setEditing] = useState(null) // the reward the form is changing, if any
   const [errors, setErrors] = useState({})
@@ -203,10 +225,11 @@ function RewardList({ rewards, refresh }) {
     event.preventDefault()
     setBusy(true)
     try {
-      await api.saveReward({ id: editing ?? undefined, title: values.title, cost: Number(values.cost) })
+      const saved = await api.saveReward({ id: editing ?? undefined, title: values.title, cost: Number(values.cost) })
+      // P12: in place, in the family's order (cheapest first; a new one after others of its cost)
+      place(([family, list, ...rest]) => [family, [...list.filter((r) => r.id !== saved.id), saved].sort((a, b) => a.cost - b.cost), ...rest])
       reset()
       setResult({ tone: 'success', text: 'Reward saved.' })
-      refresh()
     } catch (error) {
       noticeExpiry(error)
       if (error.code === 'INVALID') {
@@ -228,12 +251,13 @@ function RewardList({ rewards, refresh }) {
     setBusy(true)
     try {
       await api.deleteReward(reward.id)
+      place(([family, list, ...rest]) => [family, list.filter((r) => r.id !== reward.id), ...rest]) // P12
       if (editing === reward.id) reset()
       setResult({ tone: 'success', text: 'Reward deleted.' })
     } catch (error) {
       setResult({ tone: 'danger', text: errorText(noticeExpiry(error)) })
+      refresh() // the list on screen was out of date
     }
-    refresh()
     setConfirming(null)
     setBusy(false)
   }
@@ -331,7 +355,7 @@ function RewardList({ rewards, refresh }) {
 }
 
 /** One child's quest form, filled with the quest they have or with the usual starting values. */
-function QuestForm({ child, quest, onDone, onCancel }) {
+function QuestForm({ child, quest, dueCount, onDone, onCancel }) {
   const [values, setValues] = useState({
     target: String(quest?.target ?? 5),
     bonus: String(quest?.bonus ?? 50),
@@ -392,7 +416,16 @@ function QuestForm({ child, quest, onDone, onCancel }) {
 
   return (
     <form ref={form} className="mt-4 grid gap-4" onSubmit={save} noValidate aria-label={`${quest ? 'Change' : 'Set'} ${child.name}’s quest`}>
-      <Field as="select" label="Tasks to approve this week" error={errors.target} name="target" autoFocus value={values.target} onChange={set('target')}>
+      <Field
+        as="select"
+        label="Tasks to approve this week"
+        hint={`${child.name} has ${dueCount} ${dueCount === 1 ? 'task' : 'tasks'} due this week.`} // H13: so a target nobody can reach is plain to see
+        error={errors.target}
+        name="target"
+        autoFocus
+        value={values.target}
+        onChange={set('target')}
+      >
         {Array.from({ length: 19 }, (_, i) => i + 2).map((n) => (
           <option key={n} value={n}>
             {n}
@@ -444,7 +477,7 @@ function QuestForm({ child, quest, onDone, onCancel }) {
 }
 
 /** One card a child: this week's quest as it stands, and the form to set or change it. */
-function Quests({ family, growth, refresh }) {
+function Quests({ family, growth, tasks, refresh }) {
   const [open, setOpen] = useState(null) // the child whose quest form is open: only one at a time
   const [result, setResult] = useState(null)
 
@@ -481,7 +514,7 @@ function Quests({ family, growth, refresh }) {
                 <p className="muted mt-1">No quest for {child.name} this week.</p>
               )}
               {open === child.id ? (
-                <QuestForm child={child} quest={quest} onDone={done} onCancel={() => cancel(child.id)} />
+                <QuestForm child={child} quest={quest} dueCount={tasks.filter((t) => t.childId === child.id && dueThisWeek(t)).length} onDone={done} onCancel={() => cancel(child.id)} />
               ) : (
                 <button type="button" id={`quest-${child.id}`} className="btn btn-secondary mt-4" onClick={() => setOpen(child.id)}>
                   {quest ? 'Change the quest' : 'Set a quest'}
@@ -503,7 +536,7 @@ export default function ParentRewards() {
 
   if (loaded.status === 'loading') return <PageLoading rows={4} />
   if (loaded.status === 'error') return <ErrorState error={loaded.error} onRetry={loaded.reload} />
-  const [family, rewards, requests, growth] = loaded.data
+  const [family, rewards, requests, growth, tasks] = loaded.data
 
   return (
     <>
@@ -516,9 +549,9 @@ export default function ParentRewards() {
         </div>
       ) : (
         <>
-          <Requests requests={requests} growth={growth} refresh={refresh} />
-          <RewardList rewards={rewards} refresh={refresh} />
-          <Quests family={family} growth={growth} refresh={refresh} />
+          <Requests requests={requests} growth={growth} refresh={refresh} place={loaded.set} />
+          <RewardList rewards={rewards} refresh={refresh} place={loaded.set} />
+          <Quests family={family} growth={growth} tasks={tasks} refresh={refresh} />
         </>
       )}
     </>

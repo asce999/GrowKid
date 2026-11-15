@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { CircleAlert, CircleCheck, Info, TriangleAlert, WifiOff } from 'lucide-react'
 import { pretendingOffline } from '../api/index.js'
+import { useStale } from '../hooks/useLoad.js'
+import { inZone } from '../utils/format.js'
 import { errorText } from '../utils/messages.js'
 
 // The shared loading, empty and error states (FRONTEND-SITEMAP.md section 10).
@@ -105,9 +107,18 @@ function measure(banner) {
   }
 }
 
-/** A banner across the top while there is no network. It stays in view as the page scrolls. */
+/** A banner across the top while there is no network, or (P7) while a page's refreshes keep failing. It stays in view as the page scrolls. */
 export function OfflineBanner() {
   const online = useSyncExternalStore(onConnectionChange, () => navigator.onLine && !pretendingOffline())
+  const stale = useStale((s) => Object.values(s.since).sort((a, b) => a - b)[0]) // P7: the oldest page still showing old data
+  if (online && stale) {
+    return (
+      <p ref={measure} role="status" className="message message-warning sticky top-0 z-20 justify-center rounded-none">
+        <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+        Could not refresh. Showing what was here at {inZone({ hour: 'numeric', minute: '2-digit' }).format(stale)}.
+      </p>
+    )
+  }
   if (online) return null
   return (
     <p ref={measure} role="status" className="message message-warning sticky top-0 z-20 justify-center rounded-none">

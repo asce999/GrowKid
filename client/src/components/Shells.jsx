@@ -1,8 +1,9 @@
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { CalendarDays, ChartNoAxesColumn, Gift, House, ListTodo, LogOut, Sprout, Sticker, Users } from 'lucide-react'
 import * as api from '../api/index.js'
+import { nudge } from '../api/notify.js'
 import { noticeExpiry } from '../hooks/useLoad.js'
 import { homeFor, useSession } from '../store/session.js'
 import { initialOf } from '../utils/format.js'
@@ -60,16 +61,25 @@ function NavItems({ items, counts }) {
 }
 
 /**
- * A number for the navigation: proofs waiting for a parent, results waiting for a child. Asked
- * again on every page change, so it falls as soon as the thing is dealt with, and whenever the
- * pages themselves reload: on focus and once a minute.
+ * The navigation's numbers (P3), from one call: proofs and reward requests waiting for a parent, results waiting for a child.
+ * Asked again on every page change, so a number falls as soon as the thing is dealt with, and whenever the pages themselves
+ * reload: on focus and once a minute.
  */
-function useCount(ask_) {
+function useCounts() {
   const { pathname } = useLocation()
-  const [count, setCount] = useState({ n: 0 })
+  const [counts, setCounts] = useState({})
+  const seen = useRef(null) // the last total, for the nudge (H12)
   useEffect(() => {
     let current = true
-    const ask = () => ask_().then((n) => current && setCount({ n, askedAt: pathname }), noticeExpiry)
+    const ask = () =>
+      api.getCounts().then((found) => {
+        if (!current) return
+        // H12: more waiting than last time, while this tab is hidden: the page's own notice, when the parent turned it on
+        const total = (found.proofs ?? 0) + (found.requests ?? 0)
+        if (seen.current !== null && total > seen.current) nudge()
+        seen.current = total
+        setCounts({ ...found, askedAt: pathname })
+      }, noticeExpiry)
     ask()
     const timer = setInterval(ask, 60_000)
     window.addEventListener('focus', ask)
@@ -80,9 +90,29 @@ function useCount(ask_) {
       window.removeEventListener('focus', ask)
       window.removeEventListener('growkid:counts', ask)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname])
-  return count
+  return counts
+}
+
+/**
+ * H12: the tab's title begins with how many things are waiting, "(2) Overview – GrowKid". Each page sets its own title, so this
+ * watches the title and puts the count back in front whenever a page changes it.
+ */
+function useTitleCount(n) {
+  useEffect(() => {
+    const apply = () => {
+      const base = document.title.replace(/^\(\d+\) /, '')
+      const want = n > 0 ? `(${n}) ${base}` : base
+      if (document.title !== want) document.title = want
+    }
+    apply()
+    const watch = new MutationObserver(apply)
+    watch.observe(document.head, { subtree: true, childList: true, characterData: true })
+    return () => {
+      watch.disconnect()
+      document.title = document.title.replace(/^\(\d+\) /, '')
+    }
+  }, [n])
 }
 
 /** Always one tap away, because a parent and a child often share one device. */
@@ -152,9 +182,11 @@ function AccountMenu({ items }) {
 
 export function ParentShell() {
   const user = useSession((s) => s.user)
+  const { proofs = 0, requests = 0, askedAt } = useCounts()
+  useTitleCount(proofs + requests) // H12
   const counts = [
-    { to: '/parent', ...useCount(api.countProofsWaiting), what: 'waiting for review' },
-    { to: '/parent/rewards', ...useCount(api.countRequestsWaiting), what: 'reward requests waiting' },
+    { to: '/parent', n: proofs, askedAt, what: 'waiting for review' },
+    { to: '/parent/rewards', n: requests, askedAt, what: 'reward requests waiting' },
   ]
   return (
     <div className="lg:grid lg:min-h-page lg:grid-cols-[var(--container-sidebar)_minmax(0,1fr)] print:block">
@@ -204,7 +236,8 @@ export function ParentShell() {
 
 export function ChildShell() {
   // a result the child has not seen yet: the reward moment is waiting on Today
-  const count = { to: '/child', ...useCount(api.countNewResults), what: 'new', away: true }
+  const { results = 0, askedAt } = useCounts()
+  const count = { to: '/child', n: results, askedAt, what: 'new', away: true }
   return (
     <div className="min-h-page overflow-x-clip">
       <header className="on-navy growth-band sticky top-(--banner-h) z-10">
@@ -301,6 +334,11 @@ export function PublicShell() {
             </>
           )}
         </nav>
+        {/* final plan Phase 5, item 15: who built it and where to write, as the team gave them on 16 November 2026 */}
+        <div className="type-small muted mx-auto grid max-w-parent gap-1 px-5 pb-5 sm:px-9">
+          <p>Built by four BTech students: Aryan D’Cruz, Vedant Bane, Niddhi Machhi and Rajat Madan.</p>
+          <address className="not-italic">Contact: MIT-ADT, Loni Kalbhor, Maharashtra 412201</address>
+        </div>
       </footer>
     </div>
   )

@@ -9,7 +9,8 @@
     "test": "node --env-file=.env.test --test --test-concurrency=1 \"test/*.test.js\"",
     "lint": "oxlint",
     "seed": "node --env-file=.env prisma/seed.js",
-    "moderator": "node --env-file=.env scripts/moderator.js"
+    "moderator": "node --env-file=.env scripts/moderator.js",
+    "pause-family": "node --env-file=.env scripts/pause-family.js"
   },
   "private": true,
   "dependencies": {

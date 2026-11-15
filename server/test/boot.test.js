@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
 import { db } from '../src/db.js'
@@ -22,6 +24,14 @@ const broken = [
   ['PORT not a number', { PORT: 'abc' }, 'PORT'],
   ['UPLOAD_DIR unset', { UPLOAD_DIR: undefined }, 'UPLOAD_DIR'],
   ['UPLOAD_DIR relative', { UPLOAD_DIR: 'uploads' }, 'UPLOAD_DIR'],
+  // F8: never where a sync client would copy the proof files to another company
+  ['UPLOAD_DIR inside the repository', { UPLOAD_DIR: fileURLToPath(new URL('../uploads', import.meta.url)) }, 'UPLOAD_DIR must be outside the repository'],
+  ['UPLOAD_DIR the repository itself', { UPLOAD_DIR: fileURLToPath(new URL('../..', import.meta.url)) }, 'UPLOAD_DIR must be outside the repository'],
+  ...['OneDrive', 'OneDriveConsumer', 'OneDriveCommercial'].map((name) => [
+    `UPLOAD_DIR inside the ${name} folder`,
+    { [name]: path.join(tmpdir(), 'growkid-synced'), UPLOAD_DIR: path.join(tmpdir(), 'growkid-synced', 'deep', 'proofs') },
+    'UPLOAD_DIR must not be inside a OneDrive folder',
+  ]),
 ]
 for (const [name, changes, variable] of broken) {
   test(`boot exits 1 with ${name}`, () => {
@@ -47,8 +57,15 @@ test('boot succeeds with a good environment (control for the cases above) and se
   }
 })
 
-test('production mode: the session cookie is Secure, and an X-Clock-Days header moves nothing', { timeout: 30_000 }, async () => {
-  const child = spawn(process.execPath, [entry], { env: { ...process.env, NODE_ENV: 'production', PORT: '0' } })
+// The clock header is read only with DEV_CLOCK=1 outside production (F2). .env.test sets the switch, so each case here takes one away.
+// Empty, not unset: Prisma's client loads server/.env for any variable the process lacks, so an unset DEV_CLOCK would take that file's.
+const clockOff = [
+  ['production mode: the session cookie is Secure, and an X-Clock-Days header moves nothing', { NODE_ENV: 'production' }, true],
+  ['with DEV_CLOCK empty the X-Clock-Days header moves nothing, in test mode too', { DEV_CLOCK: '' }, false],
+  ['DEV_CLOCK set to anything but 1 is off', { DEV_CLOCK: 'true' }, false],
+]
+for (const [name, changes, secure] of clockOff) test(name, { timeout: 30_000 }, async () => {
+  const child = spawn(process.execPath, [entry], { env: { ...process.env, ...changes, PORT: '0' } })
   let out = ''
   const listening = new Promise((done, fail) => {
     child.stdout.on('data', (chunk) => {
@@ -58,12 +75,12 @@ test('production mode: the session cookie is Secure, and an X-Clock-Days header 
     child.on('exit', (code) => fail(new Error(`exited with ${code}`)))
   })
   let reportId
-  const password = 'parent-pass-1'
+  const password = 'grown-up-pass-1'
   const parent = as(`http://127.0.0.1:${await listening}/api`, { days: 30 }) // asks for a month ahead on every request
   try {
-    const signUp = await parent.post('/parents', { name: 'Prod Parent', email: `prod-${randomUUID()}@example.com`, password, country: 'IN' })
+    const signUp = await parent.post('/parents', { name: 'Prod Parent', email: `prod-${randomUUID()}@example.com`, password, country: 'IN', consent: true })
     assert.equal(signUp.status, 201)
-    assert.ok(signUp.headers.getSetCookie().some((cookie) => /;\s*Secure(;|$)/i.test(cookie)), 'the cookie is Secure')
+    assert.equal(signUp.headers.getSetCookie().some((cookie) => /;\s*Secure(;|$)/i.test(cookie)), secure, 'the cookie is Secure in production only')
     const report = await parent.post('/reports', { details: 'Which day is it?' })
     assert.equal(report.status, 201)
     reportId = report.body.id
@@ -90,11 +107,11 @@ test('S11: families in India and the United States sending proof at the same ins
       const mom = await family(server.base, { country })
       mothers.push(mom)
       const username = `k${randomUUID().slice(0, 8)}`
-      const child = await mom.api.post('/children', { name: 'Kid', username, password: 'kid-pass-1' })
+      const child = await mom.api.post('/children', { consent: true, name: 'Kid', username, password: 'child-pass-1' })
       const parent = as(server.base, { days })
       await parent.post('/session', { identifier: mom.email, password: mom.password })
       const kid = as(server.base, { days })
-      await kid.post('/session', { identifier: username, password: 'kid-pass-1' })
+      await kid.post('/session', { identifier: username, password: 'child-pass-1' })
       await db.quest.create({ data: { childId: child.body.id, target: 1, bonus: 5, setAt: instant } })
       const task = await parent.post('/tasks', { childId: child.body.id, category: 'study', title: 'Read a page', instructions: 'Any page.', dueAt: new Date(+instant + DAY).toISOString(), points: 20 })
       const sent = await kid.form(`/tasks/${task.body.id}/proofs`, { note: 'read it' })

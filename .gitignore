@@ -37,3 +37,7 @@ dist/
 
 # Working brief for the current build phase, rewritten every phase
 /prompt.md
+
+# End-to-end test output
+test-results/
+playwright-report/

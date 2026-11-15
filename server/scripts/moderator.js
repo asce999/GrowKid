@@ -9,7 +9,8 @@ const email = (process.env.MODERATOR_EMAIL ?? '').trim().toLowerCase()
 const password = process.env.MODERATOR_PASSWORD ?? ''
 const problems = [
   !(email.length <= 254 && /^\S+@\S+\.\S+$/.test(email)) && 'MODERATOR_EMAIL must be an email address',
-  (password.length < 12 || Buffer.byteLength(password) > 72) && 'MODERATOR_PASSWORD must be at least 12 characters and at most 72 bytes',
+  // 20, not a parent's 8: a moderator's answer reaches the child who sent the report, so this password is a way to write to children
+  (password.length < 20 || Buffer.byteLength(password) > 72) && 'MODERATOR_PASSWORD must be at least 20 characters and at most 72 bytes',
 ].filter(Boolean)
 
 if (problems.length) {

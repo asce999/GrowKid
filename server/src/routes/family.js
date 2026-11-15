@@ -4,8 +4,10 @@ import { now } from '../clock.js'
 import { zoneOf } from '../countries.js'
 import { db, loadChild, lockChild, readChildren } from '../db.js'
 import { invalid, refuse, text } from '../errors.js'
-import { checkQuest, dayKeyIn, growthForChild, growthOf, isDay, leaderboardOf, progressOf, recentRest, screen, stickerList } from '../rules.js'
+import { cap, checkQuest, dayKeyIn, growthForChild, growthOf, isDay, leaderboardOf, progressOf, recentRest, screen, stickerList } from '../rules.js'
 import { asChild, asRequest, asReward } from '../shape.js'
+import { childrenOf, makeDueTasks } from './series.js'
+import { bySoonest, inWindow } from './tasks.js'
 
 /** Growth, rewards, requests, quests, rest days and the leaderboard (plan B3, rules 13 and 17 to 24). Ported from the stand-in removed in B4. */
 export const family = Router()
@@ -36,6 +38,15 @@ family.get('/growth/children', async (req, res) => {
   const snapshots = await readChildren(ids)
   const time = now()
   res.json(Object.fromEntries(ids.map((id, i) => [id, growthOf(snapshots[i], time)])))
+})
+
+/** getToday (P1): Today's three answers from one snapshot, so one call per refresh: the task window (P2), the growth and the stickers. */
+family.get('/today', async (req, res) => {
+  const me = only(req, 'child')
+  await makeDueTasks(await childrenOf(req)) // H2: today's repeating tasks first
+  const [snapshot] = await readChildren([me.id])
+  const time = now()
+  res.json({ tasks: snapshot.tasks.filter((task) => inWindow(task, time)).sort(bySoonest), growth: growthForChild(snapshot, time), stickers: stickerList(snapshot, time) })
 })
 
 /** listStickers */
@@ -85,6 +96,7 @@ family.post('/rewards', async (req, res) => {
     cost: !(Number.isInteger(cost) && cost >= 10 && cost <= 1000 && cost % 10 === 0) && 'range',
   })
   screen(title)
+  if (!existing) cap('rewards', await db.reward.count({ where: { parentId: me.id } }))
   const row = existing
     ? await db.reward.update({ where: { id: existing.id }, data: { title, cost } })
     : await db.reward.create({ data: { parentId: me.id, title, cost, createdAt: now() } })
@@ -143,18 +155,13 @@ family.post('/requests/:id/answer', async (req, res) => {
   const { result } = body
   const note = text(body.note)
   invalid({ result: !['given', 'declined'].includes(result) && 'required', note: note.length > 200 && 'length' })
+  if (result === 'declined') screen(note) // C7: the child reads it; a given request stores no note
   const { count } = await db.rewardRequest.updateMany({
     where: { id, parentId: me.id, status: 'requested' },
     data: { status: result, note: result === 'declined' ? note.trim() : '', answeredBy: me.name, answeredAt: now() },
   })
   if (count === 0) refuse((await db.rewardRequest.count({ where: { id } })) ? 'REVIEWED' : 'NOT_FOUND')
   res.json(asRequest(await db.rewardRequest.findUniqueOrThrow({ where: { id }, include: requestWith })))
-})
-
-/** countRequestsWaiting */
-family.get('/counts/requests', async (req, res) => {
-  const me = only(req, 'parent')
-  res.json(await db.rewardRequest.count({ where: { parentId: me.id, status: 'requested' } }))
 })
 
 // ------------------------------------------------------------------ quests and rest days

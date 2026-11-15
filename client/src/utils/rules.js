@@ -1,11 +1,11 @@
 import { now } from '../api/clock.js'
-import { fileSizeText } from './format.js'
+import { fileSizeText, fromLocalInput } from './format.js'
 
 // What each form field must be. Each rule returns what to do, or null when the value is fine.
 // The server checks the same things again; these exist so the form can answer as you type.
 
 /** What a proof file may be (FRONTEND-SITEMAP.md section 12, rule 5). */
-export const PROOF_TYPES = 'image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime,application/pdf'
+export const PROOF_TYPES = 'image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime'
 const PROOF_MAX_BYTES = 25 * 1024 * 1024
 
 /** The server's limits (sitemap rule 27): a name is at most 60 characters, a password at most 72 bytes (the bcrypt limit). */
@@ -18,17 +18,18 @@ export const rules = {
   email: (v) => (/^\S+@\S+\.\S+$/.test(v.trim()) ? null : 'Enter an email address, like name@example.com.'),
   parentPassword: (v) => (v.length < 8 ? 'Use at least 8 characters.' : passwordTooLong(v) ? TOO_LONG : null),
   username: (v) => (/^[a-z0-9]{3,20}$/.test(v) ? null : 'Use 3 to 20 lowercase letters or numbers, with no spaces.'),
-  childPassword: (v) => (v.length < 6 ? 'Use at least 6 characters.' : passwordTooLong(v) ? TOO_LONG : null),
+  childPassword: (v) => (v.length < 8 ? 'Use at least 8 characters.' : passwordTooLong(v) ? TOO_LONG : null),
 
   taskTitle: (v) => (v.trim().length >= 3 && v.trim().length <= 80 ? null : 'Give the task a title of 3 to 80 characters.'),
   taskInstructions: (v) => (v.trim() ? null : 'Say what has to be done and what proof to send.'),
   /** mustBeAhead is false when an existing task keeps the due time it already had. */
   due: (v, who, mustBeAhead) => {
-    if (!v || Number.isNaN(new Date(v).getTime())) return `Add a day and time so ${who} knows when it is due.`
-    return mustBeAhead && new Date(v) <= now() ? 'Pick a time that has not passed yet.' : null
+    const at = fromLocalInput(v) // P13: the family's wall clock
+    if (!at) return `Add a day and time so ${who} knows when it is due.`
+    return mustBeAhead && new Date(at) <= now() ? 'Pick a time that has not passed yet.' : null
   },
   proofFile: (file) => {
-    if (!PROOF_TYPES.split(',').includes(file.type)) return 'That kind of file cannot be sent. Choose a photo, a video or a PDF.'
+    if (!PROOF_TYPES.split(',').includes(file.type)) return 'That kind of file cannot be sent. Choose a photo or a video.'
     if (file.size > PROOF_MAX_BYTES) return `That file is ${fileSizeText(file.size)}. The most that can be sent is 25 MB. Choose a smaller one.`
     return null
   },

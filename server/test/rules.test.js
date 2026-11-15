@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { ApiError, text as typed } from '../src/errors.js'
-import { safeName, sniff, strip } from '../src/files.js'
-import { checkQuest, checkTask, dayKeyIn, growthForChild, growthOf, isDay, leaderboardOf, progressOf, recentRest, screen, stickerList } from '../src/rules.js'
+import { sniff, strip } from '../src/files.js'
+import { checkQuest, checkTask, dayKeyIn, growthForChild, growthOf, isDay, leaderboardOf, matchesWord, progressOf, recentRest, screen, stickerList } from '../src/rules.js'
 import { dayKey, progress, score, weekKey } from '../src/scoring.js'
 import { itemOf } from '../src/shape.js'
 import { SECRET, box, brokenJpeg, chunk, jpeg, location, mp4, pdf, png, segment, text, track, webm, webp } from './fixtures.js'
@@ -12,11 +12,11 @@ const has = (buffer, what) => buffer.includes(what)
 
 // ------------------------------------------------------------------ files
 
-test('sniff decides the type from the first bytes, and a text file called .png is nothing', () => {
+test('sniff decides the type from the first bytes, and a text file called .png or a PDF (C2) is nothing', () => {
   assert.equal(sniff(jpeg()), 'image/jpeg')
   assert.equal(sniff(png()), 'image/png')
   assert.equal(sniff(webp()), 'image/webp')
-  assert.equal(sniff(pdf()), 'application/pdf')
+  assert.equal(sniff(pdf()), null)
   assert.equal(sniff(mp4()), 'video/mp4')
   assert.equal(sniff(mp4([], 'qt')), 'video/quicktime')
   assert.equal(sniff(webm()), 'video/webm')
@@ -162,18 +162,29 @@ test('text keeps what was typed: a NUL is removed, a lone surrogate becomes U+FF
   assert.deepEqual([typed('a\0b'), typed('\0\0'), typed('a\ud800b'), typed(5), typed(null), typed('plain 😀')], ['ab', '', 'a�b', '', '', 'plain 😀'])
 })
 
-test('a PDF and a WebM are stored as sent', () => {
-  assert.equal(strip(pdf(), 'application/pdf').equals(pdf()), true)
+test('a WebM is stored as sent', () => {
   assert.equal(strip(webm(), 'video/webm').equals(webm()), true)
 })
 
-test('safeName keeps 100 characters of letters, digits, dot, dash, underscore and space, and never a path', () => {
-  assert.equal(safeName('holiday photo-1.JPG'), 'holiday photo-1.JPG')
-  assert.equal(safeName('../../etc/passwd'), 'passwd')
-  assert.equal(safeName('C:\\Users\\kid\\a<b>.png'), 'C__Users_kid_a_b_.png')
-  assert.equal(safeName('x'.repeat(300)).length, 100)
-  assert.equal(safeName(undefined), 'file')
-  assert.equal(safeName('   '), 'file')
+test('C1: a file of more parts than the cap is FILE_TYPE: 10,000 JPEG segments, WebP chunks or MP4 boxes, 20,000 PNG chunks', () => {
+  const many = (n, part) => Array.from({ length: n }, () => part)
+  const jpegOf = (n) => Buffer.concat([Buffer.from([0xff, 0xd8]), ...many(n, segment(0xfe, '')), Buffer.from([0xff, 0xda, 0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x3f, 0x00]), Buffer.from('SCAN'), Buffer.from([0xff, 0xd9])])
+  const pngOf = (n) => png(...many(n, chunk('tEXt')))
+  const webpOf = (n) => {
+    const body = Buffer.concat([Buffer.from('WEBP'), ...many(n, Buffer.concat([Buffer.from('JUNK'), Buffer.alloc(4)]))])
+    const size = Buffer.alloc(4)
+    size.writeUInt32LE(body.length)
+    return Buffer.concat([Buffer.from('RIFF'), size, body])
+  }
+  const mp4Of = (n) => mp4(many(n, box('free')))
+  // under the cap they still parse; one walk counts every part (the scan's three and the frame markers included)
+  strip(jpegOf(9_990), 'image/jpeg')
+  strip(pngOf(19_990), 'image/png')
+  strip(webpOf(9_999), 'image/webp')
+  strip(mp4Of(9_990), 'video/mp4')
+  for (const [bytes, type] of [[jpegOf(10_001), 'image/jpeg'], [pngOf(20_001), 'image/png'], [webpOf(10_001), 'image/webp'], [mp4Of(10_001), 'video/mp4']]) {
+    assert.throws(() => strip(bytes, type), refusedAs('FILE_TYPE'), type)
+  }
 })
 
 // ------------------------------------------------------------------ the task rules
@@ -184,6 +195,26 @@ test('screen (rule 8, A8): the three words, with a typographic apostrophe counte
   }
   assert.throws(() => screen('don’t tell'), (e) => e.fields.word === "don't tell")
   screen('The secretary dared to tell') // secretary, dared: not the words
+  screen('secret2 and 9dare') // C7: a digit is part of the word
+  assert.throws(() => screen('a dare_'), (e) => e.fields.word === 'dare')
+  assert.throws(() => screen('ＳＥＣＲＥＴ'), (e) => e.fields.word === 'secret') // full-width letters, folded by NFKC
+})
+
+test('C7: matchesWord finds a whole word in any script, and a word holding regex characters means only itself', () => {
+  assert.equal(matchesWord('a.b', 'say a.b now'), true)
+  assert.equal(matchesWord('a.b', 'say axb now'), false) // the dot is a dot
+  assert.equal(matchesWord('(x)', 'it is (x)'), true)
+  assert.equal(matchesWord('c++', 'learn c++'), true)
+  assert.equal(matchesWord('[a-z]', 'b'), false)
+  // Devanagari: \b would find nothing here, because it knows only ASCII letters
+  assert.equal(matchesWord('राज़', 'यह राज़ है'), true) // a word between spaces
+  assert.equal(matchesWord('राज़', 'राज़'), true) // the whole text
+  assert.equal(matchesWord('राज़', 'राज़दार'), false) // inside a longer word
+  assert.equal(matchesWord('दार', 'राज़दार'), false) // the end of a longer word
+  assert.equal(matchesWord('राज', 'राजा'), false) // a vowel sign after it is part of the word
+  assert.equal(matchesWord("don't tell", 'DON’T TELL'), true)
+  // invisible format characters would show the word and hide it: a soft hyphen, a zero-width space, a zero-width joiner
+  for (const hidden of ['se­cret', 'se​cret', 'da‍re']) assert.throws(() => screen(`our ${hidden}`), refusedAs('SCREENED'), JSON.stringify(hidden))
 })
 
 test('checkTask returns what to store, trimmed, and names every wrong field', () => {

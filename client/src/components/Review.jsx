@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { BadgeCheck, Undo2 } from 'lucide-react'
 import { whenText } from '../utils/format.js'
 import { Cheer } from './Cheer.jsx'
@@ -64,6 +65,26 @@ export function Note({ review, brief = false, className = '' }) {
   )
 }
 
+/**
+ * An earlier attempt's photo, video or note, loaded only when opened (P9): a task sent back three times would otherwise fetch
+ * three files nobody asked to see. A native disclosure, so the keyboard and screen readers already know it.
+ */
+function Attempt({ proof, label }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <details className="mt-2" onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary className="inline-flex min-h-11 cursor-pointer items-center font-medium text-navy-800 underline underline-offset-4">
+        {open ? 'Hide what was sent' : 'Show what was sent'}
+      </summary>
+      {open && (
+        <div className="mt-2">
+          <Proof proof={proof} label={label} small />
+        </div>
+      )}
+    </details>
+  )
+}
+
 /** Every attempt before the newest, oldest first: what was sent and the note it came back with. */
 export function Earlier({ task, label }) {
   const earlier = task.proofs.slice(0, -1)
@@ -75,9 +96,7 @@ export function Earlier({ task, label }) {
         {earlier.map((proof, i) => (
           <li key={proof.id}>
             <SentLine proof={proof} />
-            <div className="mt-2">
-              <Proof proof={proof} label={`${label}, attempt ${i + 1}`} small />
-            </div>
+            <Attempt proof={proof} label={`${label}, attempt ${i + 1}`} />
             {proof.review && <Note review={proof.review} className="mt-3" />}
           </li>
         ))}

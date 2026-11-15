@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { Link } from 'react-router-dom'
 import * as api from '../api/index.js'
 import { Field, PasswordField, Requirement } from '../components/Field.jsx'
@@ -6,7 +7,7 @@ import { AuthShell } from '../components/Shells.jsx'
 import { Message } from '../components/states.jsx'
 import { useLoad } from '../hooks/useLoad.js'
 import { useSession } from '../store/session.js'
-import { focusFirstInvalid, submitProblem } from '../utils/forms.js'
+import { focusFirstInvalid, refusedPassword, submitProblem } from '../utils/forms.js'
 import { rules } from '../utils/rules.js'
 
 // Only parents sign up (decision D1). A new parent is signed in and lands on Overview.
@@ -53,12 +54,15 @@ export default function SignUp() {
   const [isParent, setIsParent] = useState(false)
   const [tried, setTried] = useState(false)
   const [takenEmail, setTakenEmail] = useState(null)
+  const [refused, setRefused] = useState(null)
   const [problem, setProblem] = useState(null)
   const [busy, setBusy] = useState(false)
   const form = useRef(null)
   const select = useRef(null)
 
   const set = (field) => (event) => setValues((v) => ({ ...v, [field]: event.target.value }))
+  // a refusal was judged against all three, so changing any of them lets the form be sent again
+  const sent = `${values.name}\n${values.email}\n${values.password}`
   const errors = {
     name: rules.name(values.name),
     email:
@@ -66,7 +70,7 @@ export default function SignUp() {
       (takenEmail === values.email.trim().toLowerCase()
         ? 'That email already has an account. Sign in instead, or use another email.'
         : null),
-    password: rules.parentPassword(values.password),
+    password: rules.parentPassword(values.password) ?? (refused?.value === sent ? refused.text : null),
     country: country
       ? null
       : countries.status === 'ready'
@@ -83,11 +87,17 @@ export default function SignUp() {
     if (Object.values(errors).some(Boolean)) return focusFirstInvalid(form.current)
     setBusy(true)
     try {
-      await signUp({ ...values, country }) // the route guard then sends them to Overview
+      await signUp({ ...values, country, consent: isParent }) // C8: the tick is the consent; the route guard then sends them to Overview
     } catch (error) {
+      const guessable = refusedPassword(error, 'password', sent)
       if (error.code === 'EMAIL_TAKEN') setTakenEmail(values.email.trim().toLowerCase())
-      else setProblem(submitProblem(error))
-      setBusy(false)
+      else if (!guessable) setProblem(submitProblem(error))
+      // drawn at once, so the field is marked and the button is enabled again before the focus moves to the field
+      flushSync(() => {
+        setRefused(guessable)
+        setBusy(false)
+      })
+      if (guessable) focusFirstInvalid(form.current)
     }
   }
 
@@ -174,7 +184,7 @@ export default function SignUp() {
               aria-invalid={shown('isParent') ? 'true' : undefined}
               aria-describedby={shown('isParent') ? 'is-parent-error' : undefined}
             />
-            <span>I am the parent or guardian of the children I will add.</span>
+            <span>I am the parent or guardian of the children I will add, and I have read Safety and privacy.</span>
           </label>
           {shown('isParent') && (
             <p id="is-parent-error" className="type-small text-coral-700">

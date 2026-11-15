@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import * as api from '../api/index.js'
+import { setZone } from '../utils/format.js'
 
 /** Where each role lands after signing in, and the part of the site that is theirs. */
 const HOME = { parent: '/parent', child: '/child', moderator: '/admin/reports' }
@@ -42,3 +43,7 @@ export const useSession = create((set) => ({
   /** The server said the session is gone. A late answer after signing out changes nothing. */
   expire: () => set((s) => (s.user ? { user: null, ended: 'expired' } : s)),
 }))
+
+
+// P13: the screens count days in the signed-in family's zone, as the server does; signed out, the device's
+useSession.subscribe((now) => setZone(now.user?.zone))

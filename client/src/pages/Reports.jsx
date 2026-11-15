@@ -135,6 +135,7 @@ function ReportRow({ report, children }) {
 export default function Reports() {
   const loaded = useLoad(api.listReports, [], { live: true })
   const [note, setNote] = useState(null)
+  const [limit, setLimit] = useState(50) // P8: 50 at a time
 
   if (loaded.status === 'error') {
     return (
@@ -183,13 +184,20 @@ export default function Reports() {
           <EmptyState title="Nothing to read">When a parent or a child reports a problem, it shows here.</EmptyState>
         </div>
       ) : (
-        <ul className="mt-6 overflow-hidden rounded-card border bg-white">
-          {waiting.map((report) => (
-            <ReportRow key={report.id} report={report}>
-              <Answer report={report} onResolved={resolve} onStale={stale} />
-            </ReportRow>
-          ))}
-        </ul>
+        <>
+          <ul className="mt-6 overflow-hidden rounded-card border bg-white">
+            {waiting.slice(0, limit).map((report) => (
+              <ReportRow key={report.id} report={report}>
+                <Answer report={report} onResolved={resolve} onStale={stale} />
+              </ReportRow>
+            ))}
+          </ul>
+          {waiting.length > limit && (
+            <button type="button" className="btn btn-secondary mt-4" onClick={() => setLimit(limit + 50)}>
+              Show more
+            </button>
+          )}
+        </>
       )}
     </>
   )

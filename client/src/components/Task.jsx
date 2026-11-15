@@ -101,9 +101,10 @@ export function TaskCard({ task, children }) {
 
 /**
  * A task as one row of a list: title, then status and due time. who names the child, for a
- * parent. action is one control that sits beside the link, not inside it (a link cannot hold a button).
+ * parent; more is one more quiet line ("Repeats Mon, Wed"). action is one control that sits beside the link, not inside it (a link
+ * cannot hold a button).
  */
-export function TaskRow({ task, to, who, action }) {
+export function TaskRow({ task, to, who, more, action }) {
   return (
     <li className="flex flex-wrap items-center border-b last:border-b-0 sm:flex-nowrap">
       {/* on a phone the action takes its own line, so the title keeps its width */}
@@ -121,6 +122,7 @@ export function TaskRow({ task, to, who, action }) {
               {task.pinned && ', who chose it to do next'}
             </span>
           )}
+          {more && <span className="type-small muted">{more}</span>}
         </span>
         <Points value={task.points} short />
         <ChevronRight className="size-5 shrink-0 text-navy-600 max-sm:hidden" aria-hidden="true" />

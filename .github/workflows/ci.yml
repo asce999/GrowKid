@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  client:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run check
+      - run: npm run build
+      - name: The build holds no development switch and no demo sign-in list
+        run: '! grep -rE "growkid-demo|X-Clock-Days|growkid\.dev" dist'
+      - run: npm audit --audit-level=high
+
+  server:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: growkid_test
+        ports:
+          - 5432:5432
+        options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+      - name: Write .env.test, with a secret made for this run
+        run: |
+          {
+            echo "NODE_ENV=test"
+            echo "PORT=3000"
+            echo "TZ=UTC"
+            echo "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/growkid_test"
+            echo "JWT_SECRET=$(openssl rand -hex 32)"
+            echo "UPLOAD_DIR=$RUNNER_TEMP/growkid-proofs"
+            echo "DEV_CLOCK=1"
+          } > .env.test
+      - run: npm run lint
+      - run: npm test
+      # critical, not high: the 3 high advisories are in the config loader of Prisma's command-line tool, which handles no request.
+      # They are accepted until Prisma 7 (README, "Known advisories").
+      - run: npm audit --audit-level=critical
+
+  end-to-end:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: growkid
+        ports:
+          - 5432:5432
+        options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Set up the server as the demo runs it
+        working-directory: server
+        run: |
+          npm ci
+          {
+            echo "NODE_ENV=development"
+            echo "PORT=3000"
+            echo "TZ=UTC"
+            echo "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/growkid"
+            echo "JWT_SECRET=$(openssl rand -hex 32)"
+            echo "UPLOAD_DIR=$RUNNER_TEMP/growkid-proofs"
+          } > .env
+          npx prisma migrate deploy
+      - name: Run the loop test against the built client
+        working-directory: client
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npm run e2e

@@ -1,46 +1,55 @@
 import { createBrowserRouter } from 'react-router-dom'
-import { Crashed, FirstChildProgress, RequireRole, Root, SignedOutOnly } from './components/Guards.jsx'
+import { Booting, Crashed, FirstChildProgress, RequireRole, Root, SignedOutOnly } from './components/Guards.jsx'
 import { ChildShell, ModeratorShell, ParentShell, PublicShell, RoleShell } from './components/Shells.jsx'
-import ChildForm from './pages/ChildForm.jsx'
-import ChildTask from './pages/ChildTask.jsx'
-import Family from './pages/Family.jsx'
-import Growth from './pages/Growth.jsx'
-import Landing from './pages/Landing.jsx'
 import NotFound from './pages/NotFound.jsx'
-import Overview from './pages/Overview.jsx'
-import Privacy from './pages/Privacy.jsx'
-import Progress from './pages/Progress.jsx'
-import Report from './pages/Report.jsx'
-import ParentRewards from './pages/ParentRewards.jsx'
-import Reports from './pages/Reports.jsx'
-import Rewards from './pages/Rewards.jsx'
-import Settings from './pages/Settings.jsx'
-import SignIn from './pages/SignIn.jsx'
-import SignUp from './pages/SignUp.jsx'
-import Stickers from './pages/Stickers.jsx'
-import TaskDetail from './pages/TaskDetail.jsx'
-import TaskForm from './pages/TaskForm.jsx'
-import Tasks from './pages/Tasks.jsx'
-import Today from './pages/Today.jsx'
+
+/**
+ * P5: each page's code is its own file, loaded when the page is first opened (React Router's `lazy`). NotFound stays in the main
+ * file: it is tiny and other pages draw it too. A page that fails to load lands on Crashed, which reloads once.
+ */
+const page = (load) => async () => ({ Component: (await load()).default })
+const pages = {
+  ChildForm: page(() => import('./pages/ChildForm.jsx')),
+  ChildTask: page(() => import('./pages/ChildTask.jsx')),
+  Family: page(() => import('./pages/Family.jsx')),
+  Growth: page(() => import('./pages/Growth.jsx')),
+  Landing: page(() => import('./pages/Landing.jsx')),
+  Overview: page(() => import('./pages/Overview.jsx')),
+  ParentRewards: page(() => import('./pages/ParentRewards.jsx')),
+  Privacy: page(() => import('./pages/Privacy.jsx')),
+  Progress: page(() => import('./pages/Progress.jsx')),
+  Report: page(() => import('./pages/Report.jsx')),
+  Reports: page(() => import('./pages/Reports.jsx')),
+  Rewards: page(() => import('./pages/Rewards.jsx')),
+  Settings: page(() => import('./pages/Settings.jsx')),
+  SignIn: page(() => import('./pages/SignIn.jsx')),
+  SignUp: page(() => import('./pages/SignUp.jsx')),
+  Stickers: page(() => import('./pages/Stickers.jsx')),
+  TaskDetail: page(() => import('./pages/TaskDetail.jsx')),
+  TaskForm: page(() => import('./pages/TaskForm.jsx')),
+  Tasks: page(() => import('./pages/Tasks.jsx')),
+  Today: page(() => import('./pages/Today.jsx')),
+}
 
 // All 23 routes of Documentation/FRONTEND-SITEMAP.md section 3.
 
-const alone = (path, shell, page) => ({ path, element: shell, children: [{ index: true, element: page }] })
+const alone = (path, shell, lazy) => ({ path, element: shell, children: [{ index: true, lazy }] })
 
 export const router = createBrowserRouter([
   {
     element: <Root />,
     errorElement: <Crashed />,
+    HydrateFallback: Booting, // while the first page's code arrives
     children: [
       {
         element: <SignedOutOnly />,
         children: [
-          alone('/', <PublicShell />, <Landing />),
-          { path: '/login', element: <SignIn /> },
-          { path: '/signup', element: <SignUp /> },
+          alone('/', <PublicShell />, pages.Landing),
+          { path: '/login', lazy: pages.SignIn },
+          { path: '/signup', lazy: pages.SignUp },
         ],
       },
-      alone('/privacy', <PublicShell />, <Privacy />),
+      alone('/privacy', <PublicShell />, pages.Privacy),
       {
         path: '/parent',
         element: (
@@ -49,18 +58,18 @@ export const router = createBrowserRouter([
           </RequireRole>
         ),
         children: [
-          { index: true, element: <Overview /> },
-          { path: 'tasks', element: <Tasks /> },
-          { path: 'tasks/new', element: <TaskForm /> },
-          { path: 'tasks/:taskId', element: <TaskDetail /> },
-          { path: 'tasks/:taskId/edit', element: <TaskForm /> },
-          { path: 'rewards', element: <ParentRewards /> },
+          { index: true, lazy: pages.Overview },
+          { path: 'tasks', lazy: pages.Tasks },
+          { path: 'tasks/new', lazy: pages.TaskForm },
+          { path: 'tasks/:taskId', lazy: pages.TaskDetail },
+          { path: 'tasks/:taskId/edit', lazy: pages.TaskForm },
+          { path: 'rewards', lazy: pages.ParentRewards },
           { path: 'progress', element: <FirstChildProgress /> },
-          { path: 'progress/:childId', element: <Progress /> },
-          { path: 'family', element: <Family /> },
-          { path: 'family/new', element: <ChildForm /> },
-          { path: 'family/:childId', element: <ChildForm /> },
-          { path: 'settings', element: <Settings /> },
+          { path: 'progress/:childId', lazy: pages.Progress },
+          { path: 'family', lazy: pages.Family },
+          { path: 'family/new', lazy: pages.ChildForm },
+          { path: 'family/:childId', lazy: pages.ChildForm },
+          { path: 'settings', lazy: pages.Settings },
           { path: '*', element: <NotFound /> },
         ],
       },
@@ -72,11 +81,11 @@ export const router = createBrowserRouter([
           </RequireRole>
         ),
         children: [
-          { index: true, element: <Today /> },
-          { path: 'tasks/:taskId', element: <ChildTask /> },
-          { path: 'growth', element: <Growth /> },
-          { path: 'stickers', element: <Stickers /> },
-          { path: 'rewards', element: <Rewards /> },
+          { index: true, lazy: pages.Today },
+          { path: 'tasks/:taskId', lazy: pages.ChildTask },
+          { path: 'growth', lazy: pages.Growth },
+          { path: 'stickers', lazy: pages.Stickers },
+          { path: 'rewards', lazy: pages.Rewards },
           { path: '*', element: <NotFound /> },
         ],
       },
@@ -85,14 +94,14 @@ export const router = createBrowserRouter([
         <RequireRole role="moderator">
           <ModeratorShell />
         </RequireRole>,
-        <Reports />,
+        pages.Reports,
       ),
       alone(
         '/report',
         <RequireRole>
           <RoleShell />
         </RequireRole>,
-        <Report />,
+        pages.Report,
       ),
       // The design sheet is the coded reference, not one of the 21 routes. Development builds only.
       ...(import.meta.env.DEV

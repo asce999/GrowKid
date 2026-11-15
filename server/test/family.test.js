@@ -53,7 +53,7 @@ async function at(user, days = 0) {
   return user.clients.get(days)
 }
 async function addChild(mom, name = 'Kid') {
-  const sent = { name, username: `k${randomUUID().slice(0, 8)}`, password: 'kid-pass-1' }
+  const sent = { name, username: `k${randomUUID().slice(0, 8)}`, password: 'child-pass-1', consent: true }
   const res = await mom.api.post('/children', sent)
   assert.equal(res.status, 201)
   const api = as(server.base)
@@ -143,7 +143,7 @@ test('growth, stickers, progress and the leaderboard are for their own role and 
     refused(await mom.api.get(url), 403, 'NOT_ALLOWED')
     refused(await moderator.get(url), 403, 'NOT_ALLOWED')
   }
-  for (const url of ['/growth/children', `/children/${kid.id}/progress`, `/children/${kid.id}/rest-days`, '/counts/requests']) {
+  for (const url of ['/growth/children', `/children/${kid.id}/progress`, `/children/${kid.id}/rest-days`]) {
     refused(await kid.api.get(url), 403, 'NOT_ALLOWED')
     refused(await moderator.get(url), 403, 'NOT_ALLOWED')
   }
@@ -215,8 +215,8 @@ test('requestReward and answerRequest (rules 17, 18): the child spends what they
   assert.deepEqual(Object.keys(asked.body).sort(), ['childId', 'childName', 'cost', 'id', 'note', 'requestedAt', 'rewardId', 'status', 'title'])
   assert.deepEqual([asked.body.status, asked.body.childName, asked.body.title, asked.body.cost, asked.body.note], ['requested', 'Kid', 'Extra screen time', 50, ''])
   assert.equal(await balance(), 50) // its 50 points are held at once
-  assert.equal((await mom.api.get('/counts/requests')).body, 1)
-  assert.equal((await stranger.api.get('/counts/requests')).body, 0)
+  assert.equal((await mom.api.get('/counts')).body.requests, 1)
+  assert.equal((await stranger.api.get('/counts')).body.requests, 0)
   const answer = (body, who = mom) => who.api.post(`/requests/${asked.body.id}/answer`, body)
   refused(await answer({ result: 'given' }, stranger), 404, 'NOT_FOUND') // a parent of another family cannot answer it
   refused(await answer({ result: 'given' }, { api: kid.api }), 403, 'NOT_ALLOWED')
@@ -238,7 +238,7 @@ test('requestReward and answerRequest (rules 17, 18): the child spends what they
   assert.deepEqual((await mom.api.get('/requests')).body.map((r) => r.status), ['given', 'declined'])
   assert.deepEqual((await stranger.api.get('/requests')).body, [])
   refused(await moderator.get('/requests'), 403, 'NOT_ALLOWED')
-  assert.equal((await mom.api.get('/counts/requests')).body, 0)
+  assert.equal((await mom.api.get('/counts')).body.requests, 0)
 })
 
 test('two reward requests at once that together exceed the balance give exactly one success; two answers at once give one 200 and one REVIEWED', async () => {

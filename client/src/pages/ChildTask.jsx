@@ -12,6 +12,7 @@ import { CategoryTile, Due, Points } from '../components/Task.jsx'
 import { noticeExpiry, useLoad } from '../hooks/useLoad.js'
 import { fileSizeText } from '../utils/format.js'
 import { errorText } from '../utils/messages.js'
+import { shrinkPhoto } from '../utils/photo.js'
 import { PROOF_TYPES, rules } from '../utils/rules.js'
 import { isOpen, statusOf } from '../utils/tasks.js'
 import NotFound from './NotFound.jsx'
@@ -22,7 +23,7 @@ import NotFound from './NotFound.jsx'
 
 /** What the server may say about a proof, in the child's words. The chosen proof is always kept. */
 const REFUSED = {
-  FILE_TYPE: 'That kind of file cannot be sent. Choose a photo, a video or a PDF.',
+  FILE_TYPE: 'That kind of file cannot be sent. Choose a photo or a video.',
   FILE_TOO_LARGE: 'That file is too big. The most that can be sent is 25 MB. Choose a smaller one.',
   NETWORK: 'It did not send. Your proof is still here. Check the connection and try again.',
 }
@@ -54,6 +55,8 @@ function SendProof({ task, again, onSent, onStale }) {
   const [noPlay, setNoPlay] = useState(null) // the address of a video this browser cannot play
   const sendButton = useRef(null)
   const said = useRef(null)
+  const upload = useRef(null) // P11: the AbortController of the upload in flight
+  useEffect(() => () => upload.current?.abort(), []) // leaving the page stops the upload
   // A phone or tablet opens its camera first. A desktop gets a file chooser and a place to drop.
   const touch = window.matchMedia('(pointer: coarse)').matches
   const file = chosen?.file
@@ -90,9 +93,19 @@ function SendProof({ task, again, onSent, onStale }) {
     event.preventDefault()
     setProblem(null)
     setProgress(0)
+    const controller = new AbortController()
+    upload.current = controller
     try {
-      onSent(await api.sendProof(task.id, { file, note }, { onProgress: setProgress }))
+      const photo = file && (await shrinkPhoto(file)) // P10: a phone photo goes as a few hundred kB
+      onSent(await api.sendProof(task.id, { file: photo, note }, { onProgress: setProgress, signal: controller.signal }))
     } catch (error) {
+      if (controller.signal.aborted) {
+        // P11: the child cancelled, or left the page: nothing was stored, and the proof is still here to send
+        setProgress(null)
+        setProblem(null)
+        setTimeout(() => sendButton.current?.focus()) // the Cancel button has gone; the send button is back
+        return
+      }
       noticeExpiry(error)
       // sent from another device, or deleted, while this page was open: show the task as it is now
       if (error.code === 'LOCKED' || error.code === 'NOT_FOUND') return onStale()
@@ -155,7 +168,7 @@ function SendProof({ task, again, onSent, onStale }) {
             {!touch && <Upload className="size-5 shrink-0" aria-hidden="true" />}
             Choose a photo, video or file
           </Chooser>
-          {!touch && <p className="type-small muted text-center">Or drop it here. A photo, a video or a PDF, up to 25 MB.</p>}
+          {!touch && <p className="type-small muted text-center">Or drop it here. A photo or a video, up to 25 MB.</p>}
         </div>
       )}
 
@@ -192,6 +205,9 @@ function SendProof({ task, again, onSent, onStale }) {
           <div className="ruler mt-3" style={{ '--at': `${progress * 100}%` }}>
             <progress value={progress} max={1} aria-label="Sending your proof" />
           </div>
+          <button type="button" className="btn btn-text mt-2" onClick={() => upload.current?.abort()}>
+            Cancel
+          </button>
         </div>
       )}
       {ready && (
@@ -272,6 +288,12 @@ function Task({ id }) {
       {sentBack && <Note review={task.proofs.at(-1).review} className="type-body-child mt-6" />}
       <h2 className="type-subheading mt-6">What to do</h2>
       <p className="mt-1 break-words whitespace-pre-line">{task.instructions}</p>
+      {task.doneLooksLike && (
+        <>
+          <h2 className="type-subheading mt-6">What done looks like</h2>
+          <p className="mt-1 break-words whitespace-pre-line">{task.doneLooksLike}</p>
+        </>
+      )} {/* H5: right above the proof form */}
 
       {isOpen(task) && (
         <SendProof

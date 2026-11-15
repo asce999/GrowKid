@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { Lock, TriangleAlert } from 'lucide-react'
+import { Lock } from 'lucide-react'
 import * as api from '../api/index.js'
 import { Cheer, CheerPicker } from '../components/Cheer.jsx'
 import { Field } from '../components/Field.jsx'
+import ConfirmDialog from '../components/ConfirmDialog.jsx'
 import Proof from '../components/Proof.jsx'
 import { Earlier, Note, SentLine, Stamp } from '../components/Review.jsx'
 import StatusTag from '../components/StatusTag.jsx'
@@ -44,14 +45,20 @@ function ReviewBar({ task, proof, cheer, onStale }) {
     setState({ busy: true })
     try {
       await act()
-      navigate('/parent', { state: done })
+      // H6: on to the oldest other proof waiting, in Overview's order, carrying the result; Overview when none is left
+      const waiting = (await api.listTasks().catch(() => []))
+        .filter((t) => t.status === 'review' && t.id !== task.id)
+        .sort((a, b) => a.proofs.at(-1).sentAt.localeCompare(b.proofs.at(-1).sentAt))
+      navigate(waiting[0] ? `/parent/tasks/${waiting[0].id}` : '/parent', { state: { ...done, next: Boolean(waiting[0]) } })
     } catch (error) {
       noticeExpiry(error)
       // reviewed already, in another tab or on another device: show the task as it stands
       if (error.code === 'REVIEWED' || error.code === 'NOT_FOUND') return onStale()
-      setState({ problem: error.code === 'INVALID' && error.fields?.line ? 'Keep the line to 120 characters.' : errorText(error) })
+      setState({ problem: error.code === 'INVALID' && error.fields?.line ? 'Keep the line to 120 characters.' : error.code === 'SCREENED' ? screened(error.fields.word) : errorText(error) })
     }
   }
+  // C7: the note or the cheer's line, whichever was sent, used a word GrowKid screens for
+  const screened = (word) => (writing ? `The note cannot use “${word}”. Change it, then send it back.` : `The cheer cannot use “${word}”. Change the line, then approve.`)
   const line = cheer.line.trim()
   const approve = () =>
     answer(() => api.approveProof(task.id, proof.id, cheer.kind || line ? { kind: cheer.kind, line } : undefined), {
@@ -88,6 +95,23 @@ function ReviewBar({ task, proof, cheer, onStale }) {
           value={note}
           onChange={(event) => setNote(event.target.value)}
         />
+        {/* H7: a ready note to start from; it fills the box and stays editable */}
+        <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Ready notes">
+          {['The photo is blurry', 'Part of it is missing', 'Nearly there, try once more'].map((ready) => (
+            <button
+              key={ready}
+              type="button"
+              className="btn btn-secondary min-h-11 px-3"
+              aria-pressed={note === ready}
+              onClick={() => {
+                setNote(ready)
+                form.current?.querySelector('textarea')?.focus()
+              }}
+            >
+              {ready}
+            </button>
+          ))}
+        </div>
         <div className="mt-4 flex flex-wrap gap-3">
           <button className="btn btn-primary" disabled={state.busy}>
             {state.busy ? 'Sending back…' : 'Send back'}
@@ -119,48 +143,71 @@ function ReviewBar({ task, proof, cheer, onStale }) {
 
 function Delete({ task }) {
   const navigate = useNavigate()
-  const dialog = useRef(null)
-  const [state, setState] = useState({})
-
-  async function remove() {
-    setState({ busy: true })
-    try {
-      await api.deleteTask(task.id)
-      navigate('/parent/tasks', { state: { deleted: task.title } })
-    } catch (failure) {
-      setState({ problem: errorText(noticeExpiry(failure)) })
-    }
-  }
-
+  const confirm = useRef(null)
   return (
     <>
-      <button type="button" className="btn btn-text text-coral-700" onClick={() => dialog.current.showModal()}>
+      <button type="button" className="btn btn-text text-coral-700" onClick={() => confirm.current.open()}>
         Delete
       </button>
-      <dialog ref={dialog} className="dialog" aria-labelledby="delete-title">
-        <h2 id="delete-title" className="type-subheading flex items-center gap-2">
-          <TriangleAlert className="size-5 shrink-0 text-coral-700" aria-hidden="true" />
-          Delete this task?
-        </h2>
-        <p className="mt-2 break-words">
+      <ConfirmDialog
+        ref={confirm}
+        danger
+        title="Delete this task?"
+        keep="Keep the task"
+        confirm="Delete task"
+        busyText="Deleting…"
+        act={async () => {
+          await api.deleteTask(task.id)
+          navigate('/parent/tasks', { state: { deleted: task.title } })
+        }}
+      >
+        <p>
           “{task.title}” disappears from {task.childName}’s Today.
           {task.proofs.length > 0 && ' The proof they sent is deleted with it.'} This cannot be undone.
         </p>
-        {state.problem && (
-          <Message tone="danger" alert className="mt-4">
-            {state.problem}
-          </Message>
-        )}
-        <div className="mt-6 grid gap-3 sm:flex">
-          <button type="button" className="btn btn-secondary" onClick={() => dialog.current.close()}>
-            Keep the task
-          </button>
-          <button type="button" className="btn btn-danger" disabled={state.busy} onClick={remove}>
-            {state.busy ? 'Deleting…' : 'Delete task'}
-          </button>
-        </div>
-      </dialog>
+      </ConfirmDialog>
     </>
+  )
+}
+
+/** H3: stops the series that made this task. Every task it made stays, this one included; nothing is lost, so the act is the primary button. */
+function StopRepeating({ task, onStopped }) {
+  const confirm = useRef(null)
+  const [done, setDone] = useState(false)
+  if (!task.seriesId && !done) return null
+  return (
+    <section className="mt-8 border-t pt-6" aria-labelledby="repeat-title">
+      <h2 id="repeat-title" className="type-subheading">
+        Repeating
+      </h2>
+      {done ? (
+        <Message tone="success" role="status" className="mt-3">
+          It no longer repeats. The tasks it already made stay.
+        </Message>
+      ) : (
+        <>
+          <p className="muted mt-1">A new task like this one is made each day it repeats.</p>
+          <button type="button" className="btn btn-secondary mt-3" onClick={() => confirm.current.open()}>
+            Stop repeating
+          </button>
+          <ConfirmDialog
+            ref={confirm}
+            title="Stop repeating this task?"
+            keep="Keep repeating"
+            confirm="Stop repeating"
+            busyText="Stopping…"
+            act={async () => {
+              await api.stopSeries(task.seriesId)
+              confirm.current.close()
+              setDone(true)
+              onStopped()
+            }}
+          >
+            <p>No more tasks like this are made. {task.childName}’s tasks it already made stay, this one too.</p>
+          </ConfirmDialog>
+        </>
+      )}
+    </section>
   )
 }
 
@@ -190,6 +237,10 @@ function Changes({ task }) {
         ) : (
           <Delete task={task} />
         )}
+        {/* H4: always open, approved tasks too: a copy is a new task, with its due time left to the parent */}
+        <Link to="/parent/tasks/new" state={{ copy: task }} className="btn btn-text">
+          Duplicate
+        </Link>
       </div>
       {closed && (
         <p id="closed-why" className="type-small muted mt-3 flex items-start gap-2">
@@ -201,8 +252,13 @@ function Changes({ task }) {
   )
 }
 
+/** H6: one task page per task, so going on to the next proof starts with a closed note and no cheer chosen. */
 export default function TaskDetail() {
   const { taskId } = useParams()
+  return <TaskPage key={taskId} taskId={taskId} />
+}
+
+function TaskPage({ taskId }) {
   const loaded = useLoad(() => api.getTask(taskId), [taskId])
   const [note] = useOnce()
   const [stale, setStale] = useState(false)
@@ -222,9 +278,14 @@ export default function TaskDetail() {
   return (
     <>
       <title>{`${task.title} – GrowKid`}</title>
-      <Link to="/parent/tasks" className="inline-flex min-h-11 items-center font-medium text-navy-800 underline underline-offset-4">
-        Tasks
-      </Link>
+      <nav aria-label="Back" className="flex flex-wrap gap-x-6">
+        <Link to="/parent/tasks" className="inline-flex min-h-11 items-center font-medium text-navy-800 underline underline-offset-4">
+          Tasks
+        </Link>
+        <Link to="/parent" className="inline-flex min-h-11 items-center font-medium text-navy-800 underline underline-offset-4">
+          Back to overview
+        </Link>
+      </nav>
       <h1 className="break-words">{task.title}</h1>
       <p className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
         <CategoryTile task={task} small />
@@ -239,6 +300,17 @@ export default function TaskDetail() {
       {note?.saved && (
         <Message tone="success" className="mt-4">
           Changes saved.
+        </Message>
+      )}
+      {/* H6: the answer to the last proof, said here when this is the next one waiting */}
+      {note?.approved && (
+        <Message tone="success" className="mt-4" role="status">
+          Approved. {note.approved.child} earned {note.approved.points} points for “{note.approved.title}”. Here is the next proof waiting.
+        </Message>
+      )}
+      {note?.sentBack && (
+        <Message tone="success" className="mt-4" role="status">
+          “{note.sentBack.title}” went back to {note.sentBack.child} with your note. Here is the next proof waiting.
         </Message>
       )}
       {stale && (
@@ -300,7 +372,14 @@ export default function TaskDetail() {
         <div className="max-w-prose">
           <h2 className="type-subheading">What to do</h2>
           <p className="mt-1 break-words whitespace-pre-line">{task.instructions}</p>
+          {task.doneLooksLike && ( // H5: beside the proof, so the review checks against it
+            <>
+              <h2 className="type-subheading mt-6">What done looks like</h2>
+              <p className="mt-1 break-words whitespace-pre-line">{task.doneLooksLike}</p>
+            </>
+          )}
           <Changes task={task} />
+          <StopRepeating task={task} onStopped={loaded.reload} />
           <p className="mt-8">
             <Link to={`/report?task=${task.id}`} className="type-small inline-flex min-h-11 items-center text-navy-800 underline underline-offset-4">
               Report a problem with this task

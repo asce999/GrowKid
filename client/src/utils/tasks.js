@@ -1,4 +1,5 @@
 import { now } from '../api/clock.js'
+import { addDays, dayKeyOf, weekdayOf } from './format.js'
 
 /** The word each status is shown as. A proof the parent did not accept is "Sent back", never "Rejected". */
 export const STATUS_WORDS = {
@@ -31,11 +32,34 @@ export const nextTask = (tasks) =>
 /** The parent's answer to the newest proof, if it has one. */
 export const lastReview = (task) => task.proofs.at(-1)?.review
 
-/** Due between this Monday and next, or older and still open: what Overview calls "this week". */
+/** Due between this Monday and next, or older and still open: what Overview calls "this week". Days in the family's zone (P13). */
 export function inThisWeek(task) {
-  const today = now()
-  const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - ((today.getDay() + 6) % 7))
-  const nextMonday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 7)
-  const due = new Date(task.dueAt)
-  return due < nextMonday && (due >= monday || isOpen(task))
+  const today = dayKeyOf(now())
+  const monday = addDays(today, -weekdayOf(today))
+  const due = dayKeyOf(task.dueAt)
+  return due < addDays(monday, 7) && (due >= monday || isOpen(task))
 }
+
+/** H13: due between this Monday and next, whatever its status, in the family's zone: what the quest form counts. */
+export function dueThisWeek(task) {
+  const today = dayKeyOf(now())
+  const monday = addDays(today, -weekdayOf(today))
+  const due = dayKeyOf(task.dueAt)
+  return due >= monday && due < addDays(monday, 7)
+}
+
+/**
+ * Rule 24, the streak reminder, worded as fact: only when a task is due today and still open, no proof has been sent today, and
+ * today is not a rest day. Days in the family's zone (P13). streak is growth's, whose last day mark is today.
+ */
+export function remindsStreak(tasks, streak, time) {
+  const today = dayKeyOf(time)
+  const dueToday = tasks.some((t) => isOpen(t) && dayKeyOf(t.dueAt) === today)
+  const sentToday = tasks.some((t) => t.proofs.some((p) => dayKeyOf(p.sentAt) === today))
+  return dueToday && !sentToday && streak.week.at(-1).state !== 'rest'
+}
+
+const WEEKDAY = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+/** H1: a series' days in words: "Repeats every day", or "Repeats Mon, Wed". weekdays is 7 bits, Monday = 1. */
+export const repeatText = (weekdays) =>
+  weekdays === 127 ? 'Repeats every day' : `Repeats ${WEEKDAY.filter((_, i) => weekdays & (1 << i)).join(', ')}`

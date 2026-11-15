@@ -5,15 +5,17 @@ import * as api from '../api/index.js'
 import StatusTag from '../components/StatusTag.jsx'
 import { EmptyState, ErrorState, Message, PageLoading } from '../components/states.jsx'
 import { AddChildFirst, CategoryTile, Due, Points, TaskRow } from '../components/Task.jsx'
-import { useLoad } from '../hooks/useLoad.js'
+import { noticeExpiry, useLoad } from '../hooks/useLoad.js'
 import { useOnce } from '../hooks/useOnce.js'
 import { CATEGORIES } from '../utils/categories.js'
-import { STATUS_WORDS, statusOf } from '../utils/tasks.js'
+import { errorText } from '../utils/messages.js'
+import { STATUS_WORDS, repeatText, statusOf } from '../utils/tasks.js'
 
 // Every task in the family, soonest due first: a table on wide screens, stacked rows on a phone.
 // The filters live in the address, so a filtered list can be reloaded, shared and gone back to.
 // A phone has one filter control, which opens them; a wider screen shows them all.
 
+const PAGE = 50
 const STATUSES = ['todo', 'overdue', 'review', 'sentBack', 'approved'] // the ones a task can be in today
 const cell = 'px-6 py-3 text-left align-middle'
 
@@ -29,7 +31,10 @@ function Filter({ label, value, onChange, children }) {
 }
 
 export default function Tasks() {
-  const loaded = useLoad(() => Promise.all([api.listTasks(), api.listChildren()]))
+  const loaded = useLoad(() => Promise.all([api.listTasks(), api.listChildren(), api.listSeries()]), [], { live: true }) // P6: live, like Overview
+  // P8: 50 rows at a time; past the window (P2), older approved tasks come from the history, a page at a time
+  const [limit, setLimit] = useState(PAGE)
+  const [older, setOlder] = useState({ pages: [], busy: false, problem: null })
   const [filters, setFilters] = useSearchParams()
   const [note] = useOnce()
   const [open, setOpen] = useState(false)
@@ -49,7 +54,10 @@ export default function Tasks() {
       { replace: true },
     )
 
-  const [tasks, family] = loaded.data ?? [[], []]
+  const [windowed, family, series] = loaded.data ?? [[], [], []]
+  const repeats = (task) => { const s = series.find((one) => one.id === task.seriesId); return s ? repeatText(s.weekdays) : null } // H1
+  const tasks = [...windowed, ...older.pages.flat()].filter((task, i, all) => all.findIndex((t) => t.id === task.id) === i)
+  const historyDone = older.pages.length > 0 && older.pages.at(-1).length < api.HISTORY_PAGE
   const shown = tasks.filter(
     (task) =>
       (!child || task.childId === child) &&
@@ -57,6 +65,18 @@ export default function Tasks() {
       (!category || task.category === category),
   )
   const several = family.length > 1
+  const rows = shown.slice(0, limit)
+  async function showMore() {
+    if (shown.length > limit) return setLimit(limit + PAGE)
+    setOlder((o) => ({ ...o, busy: true, problem: null }))
+    try {
+      const page = await api.listHistory(older.pages.flat().length)
+      setOlder((o) => ({ pages: [...o.pages, page], busy: false, problem: null }))
+      setLimit(limit + PAGE)
+    } catch (error) {
+      setOlder((o) => ({ ...o, busy: false, problem: errorText(noticeExpiry(error)) }))
+    }
+  }
   const createLink = `/parent/tasks/new${child ? `?child=${child}` : ''}`
 
   return (
@@ -74,7 +94,9 @@ export default function Tasks() {
 
       {note?.created && (
         <Message tone="success" className="mt-4">
-          “{note.created.title}” was created. {note.created.childName} will see it on Today.
+          {note.created.repeats
+            ? `“${note.created.title}” is set up. ${note.created.repeats}: ${note.created.childName} sees each day’s task on Today.`
+            : `“${note.created.title}” was created. ${note.created.childName} will see it on Today.`}
         </Message>
       )}
       {note?.deleted && (
@@ -141,7 +163,8 @@ export default function Tasks() {
               </Filter>
             </div>
             <p className="type-small muted mt-3" role="status">
-              {shown.length === tasks.length ? `${tasks.length} in all` : `${shown.length} of ${tasks.length} shown`}
+              {rows.length === tasks.length ? `${tasks.length} in all` : `${rows.length} of ${tasks.length} shown`}
+              {!historyDone && ', and older approved tasks below'}
             </p>
 
             {shown.length === 0 ? (
@@ -183,14 +206,17 @@ export default function Tasks() {
                     </tr>
                   </thead>
                   <tbody>
-                    {shown.map((task) => (
+                    {rows.map((task) => (
                       <tr key={task.id} className="border-b last:border-b-0">
                         <td className={`${cell} break-words`}>
                           <span className="flex items-center gap-3">
                             <CategoryTile task={task} small />
-                            <Link to={`/parent/tasks/${task.id}`} className="font-medium text-navy-800 underline underline-offset-4">
-                              {task.title}
-                            </Link>
+                            <span className="grid">
+                              <Link to={`/parent/tasks/${task.id}`} className="font-medium text-navy-800 underline underline-offset-4">
+                                {task.title}
+                              </Link>
+                              {repeats(task) && <span className="type-small muted">{repeats(task)}</span>}
+                            </span>
                           </span>
                         </td>
                         {several && <td className={cell}>{task.childName}</td>}
@@ -208,10 +234,22 @@ export default function Tasks() {
                   </tbody>
                 </table>
                 <ul className="sm:hidden">
-                  {shown.map((task) => (
-                    <TaskRow key={task.id} task={task} to={`/parent/tasks/${task.id}`} who={several && task.childName} />
+                  {rows.map((task) => (
+                    <TaskRow key={task.id} task={task} to={`/parent/tasks/${task.id}`} who={several && task.childName} more={repeats(task)} />
                   ))}
                 </ul>
+              </div>
+            )}
+            {(shown.length > limit || !historyDone) && (
+              <div className="mt-4 grid justify-items-start gap-3">
+                {older.problem && (
+                  <Message tone="danger" alert>
+                    {older.problem}
+                  </Message>
+                )}
+                <button type="button" className="btn btn-secondary" disabled={older.busy} onClick={showMore}>
+                  {older.busy ? 'Loading…' : shown.length > limit ? 'Show more' : 'Show older approved tasks'}
+                </button>
               </div>
             )}
           </>

@@ -22,18 +22,20 @@ after(async () => {
 })
 
 const tag = () => randomUUID().replaceAll('-', '').slice(0, 10)
-const GOOD = { name: 'Meera', email: 'meera@example.com', password: 'long-enough', country: 'IN' }
+const GOOD = { name: 'Meera', email: 'meera@example.com', password: 'long-enough', country: 'IN', consent: true }
 const invalid = (res, fields) => {
   assert.equal(res.status, 400)
   assert.deepEqual(res.body, { code: 'INVALID', fields })
 }
 const refused = (res, status, code) => {
   assert.equal(res.status, status)
+  // L2: a counted limit also says how many whole minutes are left
+  if (code === 'TOO_MANY') return assert.ok(res.body.code === code && Number.isInteger(res.body.fields.minutes) && res.body.fields.minutes >= 1, JSON.stringify(res.body))
   assert.deepEqual(res.body, { code })
 }
 /** Adds a child through the API and returns what was sent plus what came back. */
 async function addChild(api, details = {}) {
-  const sent = { name: 'Kid', username: `k${tag()}`, password: 'kid-pass-1', ...details }
+  const sent = { name: 'Kid', username: `k${tag()}`, password: 'child-pass-1', consent: true, ...details }
   const res = await api.post('/children', sent)
   assert.equal(res.status, 201)
   return { ...sent, ...res.body }
@@ -52,7 +54,7 @@ test('signUp makes a parent and signs them in; the cookie is HttpOnly, SameSite=
   const email = `Mixed-${tag()}@Example.com`
   const res = await api.post('/parents', { ...GOOD, name: '  Meera  ', email: `  ${email}  ` })
   assert.equal(res.status, 201)
-  assert.deepEqual(res.body, { id: res.body.id, role: 'parent', name: 'Meera', email: email.toLowerCase() })
+  assert.deepEqual(res.body, { id: res.body.id, role: 'parent', name: 'Meera', email: email.toLowerCase(), zone: 'Asia/Kolkata' })
   const cookie = res.headers.getSetCookie().find((c) => c.startsWith('growkid='))
   for (const flag of [/; HttpOnly/, /; SameSite=Strict/, /; Path=\/api/, /; Max-Age=604800/]) assert.match(cookie, flag)
   assert.doesNotMatch(cookie, /Secure/) // only in production
@@ -77,6 +79,9 @@ test('signUp refuses each wrong field as INVALID, never 500', async () => {
     [{ password: 'a'.repeat(73) }, { password: 'length' }],
     [{ password: 'é'.repeat(37) }, { password: 'length' }], // 74 bytes
     [{ password: ['long-enough'] }, { password: 'short' }],
+    [{ password: 'Football' }, { password: 'common' }], // L4
+    [{ password: 'meera-is-here' }, { password: 'personal' }], // the name
+    [{ email: 'zebra77@example.com', password: 'my-zebra77-pw' }, { password: 'personal' }], // the part of the email before the @
     [{ country: undefined }, { country: 'required' }],
     [{ country: 'XX' }, { country: 'required' }],
     [{ country: 'in' }, { country: 'required' }],
@@ -85,7 +90,7 @@ test('signUp refuses each wrong field as INVALID, never 500', async () => {
     [{ name: '', email: 'x', password: '1', country: '' }, { name: 'required', email: 'format', password: 'short', country: 'required' }],
   ]
   for (const [change, fields] of cases) invalid(await as(server.base).post('/parents', { ...GOOD, ...change }), fields)
-  invalid(await as(server.base).post('/parents'), { name: 'required', email: 'format', password: 'short', country: 'required' }) // no body at all
+  invalid(await as(server.base).post('/parents'), { name: 'required', email: 'format', password: 'short', country: 'required', consent: 'required' }) // no body at all
 })
 
 test('signUp: a taken email is EMAIL_TAKEN in any case; two at once give one 201 and one EMAIL_TAKEN (P2002)', async () => {
@@ -110,12 +115,12 @@ test('signIn: a parent by email, a child by username, in any case; the User hold
   const parent = as(server.base)
   const res = await parent.post('/session', { identifier: `  ${mom.email.toUpperCase()}  `, password: mom.password })
   assert.equal(res.status, 200)
-  assert.deepEqual(res.body, { id: mom.user.id, role: 'parent', name: 'Test Parent', email: mom.email })
+  assert.deepEqual(res.body, { id: mom.user.id, role: 'parent', name: 'Test Parent', email: mom.email, zone: 'Asia/Kolkata' })
   assert.match(res.headers.getSetCookie().join(), /^growkid=/)
   const child = as(server.base)
   const own = await child.post('/session', { identifier: kid.username.toUpperCase(), password: kid.password })
   assert.equal(own.status, 200)
-  assert.deepEqual(own.body, { id: kid.id, role: 'child', name: 'Kid', username: kid.username })
+  assert.deepEqual(own.body, { id: kid.id, role: 'child', name: 'Kid', username: kid.username, zone: 'Asia/Kolkata' }) // P13: a child's zone is the parent's
   assert.deepEqual((await child.get('/session')).body, own.body)
 })
 
@@ -158,6 +163,21 @@ test('signIn is limited to 10 tries per address and identifier: the 11th is TOO_
   refused(await api.post('/session', { identifier: `nobody-${tag()}@example.com`, password: refusedPassword }), 401, 'WRONG_DETAILS')
 })
 
+test('a made-up X-Forwarded-For does not dodge the limit: the tries are counted against the address the proxy appended (F1)', async () => {
+  const mom = await family(server.base)
+  const refusedPassword = 'x'.repeat(73)
+  const madeUp = () => Array.from({ length: 4 }, () => Math.floor(Math.random() * 254) + 1).join('.')
+  // What Vite's proxy sends on (xfwd): whatever the caller wrote, then the address the request really came from. Loopback is the
+  // case that matters, a browser on this computer, and the one that 'trust proxy: loopback' got wrong.
+  for (const real of ['127.0.0.1', '::1', madeUp()]) {
+    const identifier = `nobody-${tag()}@example.com` // the limit is per address and identifier, so each address gets its own
+    const attempt = (password = refusedPassword) => as(server.base, { ip: `${madeUp()}, ${real}` }).post('/session', { identifier, password })
+    for (let i = 0; i < 10; i++) refused(await attempt(), 401, 'WRONG_DETAILS')
+    refused(await attempt(), 429, 'TOO_MANY') // an eleventh made-up address, the same real one
+  }
+  assert.equal((await mom.api.post('/me/delete', { password: mom.password })).status, 204)
+})
+
 test('signIn also allows 50 failed tries per address across identifiers: the 51st is TOO_MANY', async () => {
   const api = as(server.base)
   const refusedPassword = 'x'.repeat(73)
@@ -180,6 +200,19 @@ test('signUp is limited to 20 per address: the 21st is TOO_MANY', async () => {
   assert.equal((await family(server.base)).user.role, 'parent') // another address is fine
 })
 
+test('signIn pauses one account after 30 failed tries in an hour, whatever the address, and says how many minutes are left (L1, L2)', async () => {
+  const mom = await family(server.base)
+  const neighbour = await family(server.base)
+  const wrong = 'x'.repeat(73)
+  // a new address every time, so neither of the limits that count by address is reached; the identifier is the same account however it is typed
+  for (let i = 0; i < 30; i++) refused(await as(server.base).post('/session', { identifier: ` ${mom.email.toUpperCase()} `, password: wrong }), 401, 'WRONG_DETAILS')
+  const paused = await as(server.base).post('/session', { identifier: mom.email, password: mom.password }) // even the right one
+  assert.equal(paused.status, 429)
+  assert.deepEqual(paused.body, { code: 'TOO_MANY', fields: { minutes: 60 } })
+  await signedIn(neighbour.email, neighbour.password) // another account is not held up
+  assert.equal((await mom.api.get('/children')).status, 200) // and a device already signed in stays so
+})
+
 // ------------------------------------------------------------------ the parent
 
 test('updateName trims, refuses an empty or long name, and is for parents only', async () => {
@@ -187,7 +220,7 @@ test('updateName trims, refuses an empty or long name, and is for parents only',
   const kid = await addChild(mom.api)
   const res = await mom.api.patch('/me', { name: '  New Name ' })
   assert.equal(res.status, 200)
-  assert.deepEqual(res.body, { id: mom.user.id, role: 'parent', name: 'New Name', email: mom.email })
+  assert.deepEqual(res.body, { id: mom.user.id, role: 'parent', name: 'New Name', email: mom.email, zone: 'Asia/Kolkata' })
   for (const name of ['', '  ', 'a'.repeat(61), 5, undefined]) {
     invalid(await mom.api.patch('/me', { name }), { name: name !== undefined && typeof name === 'string' && name.length > 60 ? 'length' : 'required' })
   }
@@ -204,6 +237,9 @@ test('changePassword: WRONG_PASSWORD first, then INVALID next; success signs out
   invalid(await mom.api.put('/me/password', { current: mom.password, next: 'short' }), { next: 'short' })
   invalid(await mom.api.put('/me/password', { current: mom.password, next: 'n'.repeat(73) }), { next: 'length' })
   invalid(await mom.api.put('/me/password', { current: mom.password }), { next: 'short' })
+  invalid(await mom.api.put('/me/password', { current: mom.password, next: '12345678' }), { next: 'common' }) // L4
+  invalid(await mom.api.put('/me/password', { current: mom.password, next: 'a-Parent-pass' }), { next: 'personal' })
+  invalid(await mom.api.put('/me/password', { current: mom.password, next: `${mom.email.split('@')[0]}!` }), { next: 'personal' })
 
   const done = await mom.api.put('/me/password', { current: mom.password, next: 'brand-new-pass' })
   assert.equal(done.status, 204)
@@ -275,13 +311,88 @@ test('listCountries needs no sign-in, holds India, is sorted by name; zoneOf and
   }
 })
 
+test('endOtherSessions signs out every other device and keeps this one; two at once land once; the password is unchanged (L5)', async () => {
+  const mom = await family(server.base)
+  const other = await signedIn(mom.email, mom.password)
+  const done = await mom.api.post('/me/sessions/end')
+  assert.equal(done.status, 204)
+  assert.match(done.headers.getSetCookie().join(), /^growkid=[^;]+; /) // a fresh cookie for this device
+  assert.equal((await mom.api.get('/children')).status, 200)
+  refused(await other.get('/children'), 401, 'NOT_SIGNED_IN')
+  const again = await signedIn(mom.email, mom.password) // the same password signs in again
+  const both = await Promise.all([mom.api, again].map((api) => api.post('/me/sessions/end')))
+  assert.deepEqual(both.map((r) => r.status).sort(), [204, 401])
+  const kid = await addChild(both[0].status === 204 ? mom.api : again)
+  refused(await (await signedIn(kid.username, kid.password)).post('/me/sessions/end'), 403, 'NOT_ALLOWED')
+  refused(await as(server.base).post('/me/sessions/end'), 401, 'NOT_SIGNED_IN')
+})
+
 // ------------------------------------------------------------------ children
+
+test("endChildSessions signs the child out on every device; the password still works; another family's child is NOT_FOUND (L5)", async () => {
+  const mom = await family(server.base)
+  const stranger = await family(server.base)
+  const kid = await addChild(mom.api)
+  const devices = [await signedIn(kid.username, kid.password), await signedIn(kid.username, kid.password)]
+  refused(await stranger.api.post(`/children/${kid.id}/sessions/end`), 404, 'NOT_FOUND')
+  refused(await devices[0].post(`/children/${kid.id}/sessions/end`), 403, 'NOT_ALLOWED')
+  assert.equal((await devices[0].get('/session')).body.id, kid.id) // refusals changed nothing
+  assert.equal((await mom.api.post(`/children/${kid.id}/sessions/end`)).status, 204)
+  for (const device of devices) assert.equal((await device.get('/session')).body, null)
+  await signedIn(kid.username, kid.password)
+  assert.equal((await mom.api.get('/children')).status, 200) // the parent stays signed in
+})
+
+test("adding a child and resetting a child's password share a limit of 20 an hour for one parent (L3)", async () => {
+  const mom = await family(server.base)
+  const neighbour = await family(server.base)
+  const kid = await addChild(mom.api) // the first of the 20
+  for (let i = 0; i < 10; i++) assert.equal((await mom.api.post('/children', {})).status, 400) // refused tries count: each one could test a username
+  for (let i = 0; i < 9; i++) assert.equal((await mom.api.put(`/children/${kid.id}/password`, {})).status, 400)
+  refused(await mom.api.post('/children', { consent: true, name: 'Late', username: `k${tag()}`, password: 'child-pass-1' }), 429, 'TOO_MANY')
+  refused(await mom.api.put(`/children/${kid.id}/password`, { password: 'another-pass-2' }), 429, 'TOO_MANY')
+  await signedIn(kid.username, kid.password) // nothing was reset
+  await addChild(neighbour.api) // another parent is not held up
+})
+
+test('a family holds at most 10 children and 50 rewards: one more is QUOTA, naming the cap (L6)', async () => {
+  const mom = await family(server.base)
+  const passwordHash = await bcrypt.hash('x', 4)
+  await db.user.createMany({ data: Array.from({ length: 10 }, (_, i) => ({ role: 'child', name: `Child ${i}`, username: `c${i}${tag()}`, parentId: mom.user.id, passwordHash })) })
+  const eleventh = await mom.api.post('/children', { consent: true, name: 'Eleventh', username: `k${tag()}`, password: 'child-pass-1' })
+  assert.deepEqual([eleventh.status, eleventh.body], [409, { code: 'QUOTA', fields: { quota: 'children' } }])
+  assert.equal((await mom.api.get('/children')).body.length, 10)
+  invalid(await mom.api.post('/children', { consent: true, name: '', username: `k${tag()}`, password: 'child-pass-1' }), { name: 'required' }) // a wrong field is still said first
+
+  await db.reward.createMany({ data: Array.from({ length: 50 }, (_, i) => ({ parentId: mom.user.id, title: `Reward ${i}`, cost: 10, createdAt: new Date() })) })
+  const reward = await mom.api.post('/rewards', { title: 'One too many', cost: 10 })
+  assert.deepEqual([reward.status, reward.body], [409, { code: 'QUOTA', fields: { quota: 'rewards' } }])
+  const [held] = (await mom.api.get('/rewards')).body
+  assert.equal((await mom.api.post('/rewards', { id: held.id, title: 'Changed', cost: 20 })).status, 200) // changing one adds none
+  assert.equal((await mom.api.post('/me/delete', { password: mom.password })).status, 204)
+})
+
+test('one user can make 120 changes a minute, and one address when signed out; reading and signing out are never counted (L7)', async () => {
+  const mom = await family(server.base)
+  const neighbour = await family(server.base)
+  for (let i = 0; i < 120; i++) assert.equal((await mom.api.patch('/me', {})).status, 400) // refused ones count too
+  const paused = await mom.api.patch('/me', { name: 'Late' })
+  assert.deepEqual([paused.status, paused.body], [429, { code: 'TOO_MANY', fields: { minutes: 1 } }])
+  assert.equal((await mom.api.get('/session')).body.name, 'Test Parent')
+  assert.equal((await neighbour.api.patch('/me', { name: 'Neighbour' })).status, 200)
+  assert.equal((await mom.api.del('/session')).status, 204)
+
+  const visitor = as(server.base)
+  for (let i = 0; i < 120; i++) assert.equal((await visitor.post('/nothing')).status, 404)
+  refused(await visitor.post('/nothing'), 429, 'TOO_MANY')
+  assert.equal((await visitor.get('/nothing')).status, 404)
+})
 
 test('addChild, listChildren, getChild and renameChild: shapes, order and refusals', async () => {
   const mom = await family(server.base)
   const first = await addChild(mom.api, { name: '  Aarav ' })
   const second = await addChild(mom.api, { name: 'Diya' })
-  assert.deepEqual(Object.keys(first).sort(), ['id', 'name', 'password', 'username']) // the password is only what we sent
+  assert.deepEqual(Object.keys(first).sort(), ['consent', 'id', 'name', 'password', 'username']) // the password and the consent are only what we sent
   assert.equal(first.name, 'Aarav')
   const list = await mom.api.get('/children')
   assert.deepEqual(list.body, [
@@ -302,23 +413,32 @@ test('addChild, listChildren, getChild and renameChild: shapes, order and refusa
     [{ username: ' abc' }, { username: 'format' }],
     [{ username: 123 }, { username: 'format' }],
     [{ password: 'short' }, { password: 'short' }],
+    [{ password: 'seven77' }, { password: 'short' }], // L4: a child's password is 8 or more
     [{ password: 'p'.repeat(73) }, { password: 'length' }],
     [{ password: 9 }, { password: 'short' }],
+    [{ password: 'PassWord' }, { password: 'common' }], // L4: one of the 1,000 most common, in any capitals
+    [{ name: 'Aarav Rao', password: 'aarav-2015' }, { password: 'personal' }], // a word of the name
+    [{ name: 'Aarav Rao', password: 'x-RAO-2015' }, { password: 'personal' }],
+    [{ name: 'मीरा', password: 'मीरा12345' }, { password: 'personal' }], // a name whose letters carry vowel signs is still one word
+    [{ name: 'José Diaz', password: 'josé-2015-x' }, { password: 'personal' }], // the same letter, typed two ways
+    [{ username: 'tiger55', password: 'my-tiger55-pw' }, { password: 'personal' }], // the username
   ]
-  for (const [change, fields] of cases) {
-    invalid(await mom.api.post('/children', { name: 'Kid', username: `k${tag()}`, password: 'kid-pass-1', ...change }), fields)
+  const other = await family(server.base) // a second parent takes half: one may try 20 an hour (L3)
+  for (const [i, [change, fields]] of cases.entries()) {
+    invalid(await (i % 2 ? other : mom).api.post('/children', { consent: true, name: 'Kid', username: `k${tag()}`, password: 'child-pass-1', ...change }), fields)
   }
-  invalid(await mom.api.post('/children'), { name: 'required', username: 'format', password: 'short' })
+  invalid(await mom.api.post('/children'), { name: 'required', username: 'format', password: 'short', consent: 'required' })
   assert.equal((await mom.api.get('/children')).body.length, 2)
+  await addChild(mom.api, { name: 'Jo Li', password: 'jo-li-pass' }) // a word of one or two letters is not held against the password
 })
 
 test('addChild: a taken username is USERNAME_TAKEN, across families too; two at once give one 201 and one 409 (P2002)', async () => {
   const mom = await family(server.base)
   const kid = await addChild(mom.api)
   const stranger = await family(server.base)
-  refused(await stranger.api.post('/children', { name: 'Copy', username: kid.username, password: 'kid-pass-1' }), 409, 'USERNAME_TAKEN')
+  refused(await stranger.api.post('/children', { consent: true, name: 'Copy', username: kid.username, password: 'child-pass-1' }), 409, 'USERNAME_TAKEN')
   const racing = `r${tag()}`
-  const both = await Promise.all([1, 2].map(() => mom.api.post('/children', { name: 'Kid', username: racing, password: 'kid-pass-1' })))
+  const both = await Promise.all([1, 2].map(() => mom.api.post('/children', { consent: true, name: 'Kid', username: racing, password: 'child-pass-1' })))
   assert.deepEqual(both.map((r) => r.status).sort(), [201, 409])
   assert.deepEqual(both.find((r) => r.status === 409).body, { code: 'USERNAME_TAKEN' })
 })
@@ -345,14 +465,17 @@ test('resetChildPassword: INVALID password, then 204; the old password and every
   const kid = await addChild(mom.api)
   const device = await signedIn(kid.username, kid.password)
   assert.equal((await device.get('/session')).body.id, kid.id)
-  invalid(await mom.api.put(`/children/${kid.id}/password`, { password: 'abc' }), { password: 'short' })
+  invalid(await mom.api.put(`/children/${kid.id}/password`, { password: 'abcdefg' }), { password: 'short' })
+  invalid(await mom.api.put(`/children/${kid.id}/password`, { password: 'password' }), { password: 'common' })
+  invalid(await mom.api.put(`/children/${kid.id}/password`, { password: 'the-kid-pass' }), { password: 'personal' })
+  invalid(await mom.api.put(`/children/${kid.id}/password`, { password: `${kid.username}-pass` }), { password: 'personal' })
   invalid(await mom.api.put(`/children/${kid.id}/password`, { password: 'p'.repeat(73) }), { password: 'length' })
   assert.equal((await device.get('/session')).body.id, kid.id) // refusals changed nothing
-  const done = await mom.api.put(`/children/${kid.id}/password`, { password: 'new-kid-pass' })
+  const done = await mom.api.put(`/children/${kid.id}/password`, { password: 'new-child-pass' })
   assert.equal(done.status, 204)
   assert.equal((await device.get('/session')).body, null)
   refused(await as(server.base).post('/session', { identifier: kid.username, password: kid.password }), 401, 'WRONG_DETAILS')
-  await signedIn(kid.username, 'new-kid-pass')
+  await signedIn(kid.username, 'new-child-pass')
   assert.equal((await mom.api.get('/children')).status, 200) // the parent stays signed in
 })
 
@@ -365,6 +488,7 @@ test('every parent route refuses a signed-out visitor, a child and a moderator',
   const moderator = await signedIn(email, 'moderator-pass')
   assert.equal((await moderator.get('/session')).body.role, 'moderator')
   const routes = [
+    ['post', '/me/sessions/end'], ['post', '/children/x/sessions/end'],
     ['get', '/children'], ['post', '/children', {}], ['get', '/children/x'], ['patch', '/children/x', {}], ['del', '/children/x'],
     ['put', '/children/x/password', {}], ['patch', '/me', {}], ['put', '/me/password', {}], ['post', '/me/delete', {}],
     ['get', '/settings'], ['put', '/settings', {}], ['put', '/settings/country', {}],
@@ -488,7 +612,7 @@ test('a row that goes away between the lookup and the update is NOT_FOUND, never
   await assert.rejects(db.user.update({ where: { id: randomUUID() }, data: { name: 'x' } }), { code: 'P2025' })
   const mom = await family(server.base)
   const kid = await addChild(mom.api)
-  const resetting = mom.api.put(`/children/${kid.id}/password`, { password: 'new-kid-pass' }) // hashes for a quarter of a second before it writes
+  const resetting = mom.api.put(`/children/${kid.id}/password`, { password: 'new-child-pass' }) // hashes for a quarter of a second before it writes
   await sleep(100)
   await db.user.delete({ where: { id: kid.id } })
   refused(await resetting, 404, 'NOT_FOUND')

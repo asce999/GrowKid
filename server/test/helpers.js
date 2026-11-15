@@ -49,6 +49,7 @@ export function as(base, { ip, days } = {}) {
     return { status: res.status, headers: res.headers, body: raw.length ? (json ? JSON.parse(raw) : raw) : undefined }
   }
   return {
+    cookie: () => cookie, // for a request the test sends by hand
     get: (path, extra) => send('GET', path, undefined, extra), // extra: more request headers, such as Range
     post: (path, body, extra) => send('POST', path, body, extra),
     put: (path, body, extra) => send('PUT', path, body, extra),
@@ -66,7 +67,7 @@ export function as(base, { ip, days } = {}) {
 
 /** Signs up a parent with a unique email. Returns their client (already signed in), their user and the details they signed up with. */
 export async function family(base, details = {}) {
-  const parent = { name: 'Test Parent', email: `parent-${randomUUID()}@example.com`, password: 'parent-pass-1', country: 'IN', ...details }
+  const parent = { name: 'Test Parent', email: `parent-${randomUUID()}@example.com`, password: 'grown-up-pass-1', country: 'IN', consent: true, ...details }
   const api = as(base)
   const res = await api.post('/parents', parent)
   assert.equal(res.status, 201)

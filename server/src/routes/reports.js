@@ -11,7 +11,8 @@ export const reports = Router()
 
 /**
  * sendReport (A10): straight to the moderator's list, at most 10 sent an hour from one user (reportLimit; refused ones do not count).
- * No parent is asked, told or shown, and the moderator has no power beyond answering. A task the sender cannot see is left out without a word, and the report
+ * No parent is asked, told or shown, and the moderator has no power beyond answering; pausing the sender's family is the server
+ * operator's script, scripts/pause-family.js (C6). A task the sender cannot see is left out without a word, and the report
  * still goes.
  */
 reports.post('/reports', reportLimit, async (req, res) => {

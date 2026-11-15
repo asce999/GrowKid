@@ -2,7 +2,8 @@ import { PrismaClient } from '@prisma/client'
 import { zoneOf } from './countries.js'
 import { asTask } from './shape.js'
 
-export const db = new PrismaClient()
+// minimal: Prisma's default error text quotes the query's values, which can be a task title or a proof note (sitemap rule 28, F7)
+export const db = new PrismaClient({ errorFormat: 'minimal' })
 
 /** Section 7, Races: takes the child's row lock so score-then-write handlers (approve, request, quest) cannot interleave. Call first inside db.$transaction. */
 export const lockChild = (tx, id) => tx.$queryRaw`SELECT 1 FROM "User" WHERE id = ${id} FOR UPDATE`

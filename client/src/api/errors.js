@@ -6,27 +6,29 @@
  * EMAIL_TAKEN     sign-up with an email that already has an account
  * USERNAME_TAKEN  a child's username is already in use
  * INVALID         the server refused the input; `fields` names what is wrong
- * SCREENED        content screening refused a task; `fields.word` is the word it found
+ * SCREENED        content screening refused what a parent wrote for a child; `fields.word` is the word it found
  * LOCKED          the task can no longer be changed that way (see the rules on each function)
  * REVIEWED        the proof has already been approved or sent back, or is no longer the newest
  * NOT_ENOUGH      a reward costs more points than the child has to spend
- * FILE_TYPE      a proof file is not a photo, a video or a PDF
+ * FILE_TYPE       a proof file is not a photo or a video
  * FILE_TOO_LARGE  a proof file is over the size limit
  * NOT_SIGNED_IN   no session, or it has expired
  * NOT_ALLOWED     signed in, but this role may not do that
+ * PAUSED          sign-in to a family that is paused while a report is looked at
  * NOT_FOUND       no such thing, or it belongs to another family
- * TOO_MANY        too many tries in a short time: sign-in, sign-up, a password change or reports
+ * QUOTA           a family's cap is reached; `fields.quota` is children, tasks, rewards, storage or disk
+ * TOO_MANY        too many tries in a short time; `fields.minutes` is how long to wait, when the server knows
  * NETWORK         the server could not be reached
  * SERVER          the server failed
  *
  * @typedef {'WRONG_DETAILS' | 'WRONG_PASSWORD' | 'EMAIL_TAKEN' | 'USERNAME_TAKEN' | 'INVALID' | 'SCREENED' | 'LOCKED'
- *   | 'REVIEWED' | 'NOT_ENOUGH' | 'FILE_TYPE' | 'FILE_TOO_LARGE' | 'NOT_SIGNED_IN' | 'NOT_ALLOWED' | 'NOT_FOUND' | 'TOO_MANY' | 'NETWORK'
+ *   | 'REVIEWED' | 'NOT_ENOUGH' | 'FILE_TYPE' | 'FILE_TOO_LARGE' | 'NOT_SIGNED_IN' | 'NOT_ALLOWED' | 'PAUSED' | 'NOT_FOUND' | 'QUOTA' | 'TOO_MANY' | 'NETWORK'
  *   | 'SERVER'} ApiErrorCode
  */
 export class ApiError extends Error {
   /**
    * @param {ApiErrorCode} code
-   * @param {Record<string, string>} [fields] field name to what is wrong, for INVALID and SCREENED
+   * @param {Record<string, string | number>} [fields] field name to what is wrong, for INVALID and SCREENED; `quota` for QUOTA; `minutes` for TOO_MANY
    */
   constructor(code, fields) {
     super(code)

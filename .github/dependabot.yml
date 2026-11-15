@@ -1,0 +1,13 @@
+# Security updates only: a limit of 0 switches version updates off and leaves the security ones on.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /client
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+  - package-ecosystem: npm
+    directory: /server
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0

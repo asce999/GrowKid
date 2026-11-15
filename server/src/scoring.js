@@ -196,6 +196,15 @@ export const recordOf = (tasks, time, { rest = [], quests = 0, zone } = {}) =>
   recordFor(approvedOf(tasks), tasks, time, restSet(rest), quests, zone)
 
 /**
+ * The stickers the record has reached as the tasks stand, in one pass. An approval uses this (recordApproval): every sticker it
+ * finds that the child does not hold yet was earned by that approval, which is what stickers() would date it by.
+ */
+export function reached(tasks, time, input) {
+  const record = recordOf(tasks, time, input)
+  return STICKERS.filter((sticker) => record[sticker.measure] >= sticker.need)
+}
+
+/**
  * Every sticker, and for an earned one the approval that earned it: when, and for which task.
  * The approvals are gone through in order, so each sticker is dated by the first approval after
  * which its condition held. questAwards are the quests the child has completed, each with the
@@ -258,3 +267,19 @@ export const balanceOf = (points, questAwards, requests) =>
   points
   + questAwards.reduce((total, award) => total + award.bonus, 0)
   - requests.filter((r) => r.status === 'requested' || r.status === 'given').reduce((total, r) => total + r.cost, 0)
+
+/**
+ * H2: the instant the family's clock shows `time` ('HH:MM') on `day` ('YYYY-MM-DD'). The zone's offset is read at a first guess
+ * and again at the answer, so a day the clocks change still lands on the right instant (a time the clocks skip moves forward).
+ */
+export function atTimeIn(day, time, zone) {
+  const [y, m, d] = day.split('-').map(Number)
+  const [h, mi] = time.split(':').map(Number)
+  const asUtc = Date.UTC(y, m - 1, d, h, mi)
+  const wall = new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+  const offset = (t) => {
+    const p = Object.fromEntries(wall.formatToParts(new Date(t)).map((part) => [part.type, Number(part.value)]))
+    return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute) - Math.floor(t / 60_000) * 60_000
+  }
+  return new Date(asUtc - offset(asUtc - offset(asUtc)))
+}

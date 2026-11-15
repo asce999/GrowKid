@@ -104,7 +104,8 @@ export default function Report() {
   const user = useSession((s) => s.user)
   const taskId = useSearchParams()[0].get('task')
   // the task this report was opened from, if it is theirs to see; without it the form works the same
-  const task = useLoad(async () => (taskId ? (await api.listTasks()).find((t) => t.id === taskId) : undefined), [taskId])
+  // P8: the one task, not the whole list to find it in; one that is not theirs (NOT_FOUND) is simply not attached
+  const task = useLoad(async () => (taskId ? api.getTask(taskId).catch((error) => (error.code === 'NOT_FOUND' ? undefined : Promise.reject(error))) : undefined), [taskId])
   const mine = useLoad(api.listMyReports)
   const [details, setDetails] = useState('')
   const [aboutTask, setAboutTask] = useState(true)

@@ -10,10 +10,9 @@ import Sticker from '../components/Sticker.jsx'
 import Streak from '../components/Streak.jsx'
 import { CategoryTile, TaskCard, TaskRow } from '../components/Task.jsx'
 import { noticeExpiry, useLoad } from '../hooks/useLoad.js'
-import { dayKeyOf } from '../utils/format.js'
 import { errorText } from '../utils/messages.js'
 import { STICKER_ICONS } from '../utils/stickers.js'
-import { isOpen, nextTask } from '../utils/tasks.js'
+import { isOpen, nextTask, remindsStreak } from '../utils/tasks.js'
 
 // The child's home: the navy band with the level, the ruler, the weekly quest, the streak and
 // its reminder, then the one next task. It is also where the reward moment plays (DESIGN.md
@@ -54,10 +53,7 @@ function Rows({ title, tasks, children, pin }) {
  * no proof has been sent today, and today is not a rest day.
  */
 function Reminder({ tasks, streak }) {
-  const today = dayKeyOf(api.now())
-  const dueToday = tasks.some((t) => isOpen(t) && dayKeyOf(t.dueAt) === today)
-  const sentToday = tasks.some((t) => t.proofs.some((p) => dayKeyOf(p.sentAt) === today))
-  if (!dueToday || sentToday || streak.week.at(-1).state === 'rest') return null
+  if (!remindsStreak(tasks, streak, api.now())) return null // rule 24, in utils/tasks.js
   return (
     <p className="type-small mt-3 flex items-center gap-2 font-medium">
       <Flame className="size-4 shrink-0" aria-hidden="true" />
@@ -150,7 +146,7 @@ export default function Today() {
   const nextUp = useRef(null)
   const loaded = useLoad(
     async () => {
-      const [tasks, growth, stickers] = await Promise.all([api.listTasks(), api.getGrowth(), api.listStickers()])
+      const { tasks, growth, stickers } = await api.getToday() // P1: one call, one moment
       const seen = visit.current
       const fresh = tasks.filter((t) => t.status === 'approved' && !t.resultSeen && !seen.gains.some((g) => g.id === t.id))
       if (fresh.length > 0) {
@@ -168,7 +164,7 @@ export default function Today() {
       return { tasks, growth, moment: visit.current }
     },
     [],
-    { live: true },
+    { live: true, cache: false }, // the reward moment's state rides on the data: a cached copy could play it again
   )
 
   // Tell the server which results have been shown, and only those: an approval counts once its

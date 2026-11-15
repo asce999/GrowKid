@@ -10,7 +10,7 @@ import Sticker from '../components/Sticker.jsx'
 import { Points } from '../components/Task.jsx'
 import { noticeExpiry, useLoad } from '../hooks/useLoad.js'
 import { useSession } from '../store/session.js'
-import { DAY_SAID, dayKeyOf, initialOf } from '../utils/format.js'
+import { DAY_SAID, addDays, dateOfKey, dayKeyOf, dayLabel, initialOf } from '../utils/format.js'
 import { errorText } from '../utils/messages.js'
 import { STICKER_ICONS, tiltOf } from '../utils/stickers.js'
 import NotFound from './NotFound.jsx'
@@ -21,9 +21,11 @@ import NotFound from './NotFound.jsx'
 // also where a parent marks rest days, which the printed report leaves out.
 
 const dayMonth = new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short' })
-const fullDay = new Intl.DateTimeFormat('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })
+// P14: day keys labelled the same on every device (dateOfKey); a day mark is the instant its day starts in the family's zone
+const fullDay = dayLabel({ weekday: 'long', day: 'numeric', month: 'long' })
+const named = (day) => dateOfKey(dayKeyOf(day))
 const fullDate = new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: '2-digit' })
-const letter = new Intl.DateTimeFormat('en-IN', { weekday: 'narrow' })
+const letter = dayLabel({ weekday: 'narrow' })
 const tasksText = (n) => (n === 1 ? '1 task' : `${n} tasks`)
 const daysText = (n) => (n === 1 ? '1 day' : `${n} days`)
 
@@ -71,11 +73,7 @@ function Weeks({ weeks, name }) {
 }
 
 /** The day a number of days from today falls on, as 'YYYY-MM-DD'. */
-const dayIn = (n) => {
-  const d = new Date(api.now())
-  d.setDate(d.getDate() + n)
-  return dayKeyOf(d)
-}
+const dayIn = (n) => addDays(dayKeyOf(api.now()), n) // P13: in the family's zone
 
 /**
  * The rest days a parent has set for a child, and the form to add one. A rest day is never
@@ -120,7 +118,7 @@ function RestDays({ child, onChange }) {
           {loaded.data.length > 0 && (
             <ul className="mt-3 grid max-w-md gap-1">
               {loaded.data.map((key) => {
-                const text = fullDay.format(new Date(`${key}T00:00`))
+                const text = fullDay.format(dateOfKey(key))
                 return (
                   <li key={key} className="flex items-center justify-between gap-3">
                     <span>{text}</span>
@@ -188,14 +186,14 @@ function Calendar({ streak, calendar, child, onChange }) {
       <ol className="mt-4 grid w-fit grid-cols-7 gap-1.5" aria-label={`${child.name}’s days, four weeks, Monday first`}>
         {calendar.slice(0, 7).map(({ day }) => (
           <li key={`head-${day}`} className="type-small muted text-center font-medium" aria-hidden="true">
-            {letter.format(new Date(day))}
+            {letter.format(named(day))}
           </li>
         ))}
         {calendar.map(({ day, state }) => (
           <li key={day} className={`day-mark day-${state} size-9 tabular-nums`}>
-            <span aria-hidden="true">{new Date(day).getDate()}</span>
+            <span aria-hidden="true">{Number(dayKeyOf(day).slice(8))}</span>
             <span className="sr-only">
-              {fullDay.format(new Date(day))}: {DAY_SAID[state]}
+              {fullDay.format(named(day))}: {DAY_SAID[state]}
             </span>
           </li>
         ))}

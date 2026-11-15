@@ -9,12 +9,15 @@ export const STATUS = {
   NOT_SIGNED_IN: 401,
   WRONG_PASSWORD: 403,
   NOT_ALLOWED: 403,
+  PAUSED: 403, // C6: sign-in to a family paused while a report is looked at
   NOT_FOUND: 404,
   EMAIL_TAKEN: 409,
   USERNAME_TAKEN: 409,
   LOCKED: 409,
   REVIEWED: 409,
   NOT_ENOUGH: 409,
+  QUOTA: 409, // rule 27, L6 and L9: fields.quota says which cap
+
   FILE_TOO_LARGE: 413,
   FILE_TYPE: 415,
   TOO_MANY: 429,
@@ -24,7 +27,7 @@ export const STATUS = {
 export class ApiError extends Error {
   /**
    * @param {keyof typeof STATUS} code
-   * @param {Record<string, string>} [fields] field name to what is wrong, for INVALID and SCREENED
+   * @param {Record<string, string | number>} [fields] field name to what is wrong, for INVALID and SCREENED; `quota` for QUOTA; `minutes` for TOO_MANY
    */
   constructor(code, fields) {
     super(code)

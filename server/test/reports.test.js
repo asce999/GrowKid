@@ -28,6 +28,8 @@ after(async () => {
 const DAY = 86_400_000
 const refused = (res, status, code) => {
   assert.equal(res.status, status)
+  // L2: a counted limit also says how many whole minutes are left
+  if (code === 'TOO_MANY') return assert.ok(res.body.code === code && Number.isInteger(res.body.fields.minutes) && res.body.fields.minutes >= 1, JSON.stringify(res.body))
   assert.deepEqual(res.body, { code })
 }
 const invalid = (res, fields) => {
@@ -45,7 +47,7 @@ const sendReport = async (who, body) => {
 const seenByModerator = async (id) => (await moderator.get('/reports')).body.find((r) => r.id === id)
 
 async function addChild(mom, name = 'Kid', ip) {
-  const sent = { name, username: `k${randomUUID().slice(0, 8)}`, password: 'kid-pass-1' }
+  const sent = { name, username: `k${randomUUID().slice(0, 8)}`, password: 'small-secret-1', consent: true }
   const res = await mom.api.post('/children', sent)
   assert.equal(res.status, 201)
   const api = as(server.base, { ip })

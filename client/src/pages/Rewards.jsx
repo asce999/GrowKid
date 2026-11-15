@@ -30,13 +30,14 @@ export default function Rewards() {
   async function ask(reward) {
     setBusy(true)
     try {
-      await api.requestReward(reward.id)
+      const asked = await api.requestReward(reward.id)
+      // P12: the request in place, and its points held from the balance on screen, as the server holds them
+      loaded.set(([g, list, all]) => [{ ...g, shown: { ...g.shown, balance: g.shown.balance - asked.cost } }, list, [asked, ...all]])
       setResult({ tone: 'success', text: 'Asked. A parent will answer soon.' })
     } catch (error) {
       setResult({ tone: 'danger', text: errorText(noticeExpiry(error)) })
+      await refresh() // NOT_ENOUGH means the balance on screen was out of date
     }
-    // after a failure too: NOT_ENOUGH means the balance on screen was out of date
-    await refresh()
     setConfirming(null)
     setBusy(false)
   }

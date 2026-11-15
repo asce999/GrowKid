@@ -1,13 +1,15 @@
 import { useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { KeyRound, TriangleAlert } from 'lucide-react'
 import * as api from '../api/index.js'
 import { Field, PasswordField, Requirement } from '../components/Field.jsx'
 import { ErrorState, Message, PageLoading } from '../components/states.jsx'
 import { noticeExpiry, useLoad } from '../hooks/useLoad.js'
-import { focusFirstInvalid, submitProblem } from '../utils/forms.js'
+import { focusFirstInvalid, refusedPassword, submitProblem } from '../utils/forms.js'
 import { errorText } from '../utils/messages.js'
 import { asUsername, rules } from '../utils/rules.js'
+import { makePassword } from '../utils/words.js'
 import NotFound from './NotFound.jsx'
 
 // Add a child, or edit one. A child's sign-in exists only here (decision D1), so the three
@@ -17,21 +19,28 @@ import NotFound from './NotFound.jsx'
 function AddChild() {
   const navigate = useNavigate()
   const [values, setValues] = useState({ name: '', username: '', password: '' })
+  const [consent, setConsent] = useState(false) // C8: the parent's tick for this child
   const [tried, setTried] = useState(false)
   const [takenUsername, setTakenUsername] = useState(null)
+  const [refused, setRefused] = useState(null)
   const [problem, setProblem] = useState(null)
   const [busy, setBusy] = useState(false)
   const form = useRef(null)
+  const passwordInput = useRef(null)
+  // a refusal was judged against all three, so changing any of them lets the form be sent again
+  const sent = `${values.name}\n${values.username}\n${values.password}`
 
   const errors = {
     name: rules.name(values.name),
     username:
       rules.username(values.username) ??
       (takenUsername === values.username ? 'That username is taken. Try another, or add a number.' : null),
-    password: rules.childPassword(values.password),
+    password: rules.childPassword(values.password) ?? (refused?.value === sent ? refused.text : null),
+    consent: consent ? null : `Tick this to confirm you are ${values.name.trim() ? `${values.name.trim()}’s` : 'this child’s'} parent or guardian.`,
   }
   const shown = (field) => (tried || (field === 'username' && takenUsername) ? errors[field] : null)
   const who = values.name.trim() || 'Your child'
+  const whose = values.name.trim() ? `${values.name.trim()}’s` : 'this child’s'
 
   async function submit(event) {
     event.preventDefault()
@@ -40,14 +49,20 @@ function AddChild() {
     if (Object.values(errors).some(Boolean)) return focusFirstInvalid(form.current)
     setBusy(true)
     try {
-      const child = await api.addChild(values)
+      const child = await api.addChild({ ...values, consent })
       // Family shows these once, then forgets them
       navigate('/parent/family', { state: { added: { ...child, password: values.password } } })
     } catch (error) {
       noticeExpiry(error)
+      const guessable = refusedPassword(error, 'password', sent)
       if (error.code === 'USERNAME_TAKEN') setTakenUsername(values.username)
-      else setProblem(submitProblem(error))
-      setBusy(false)
+      else if (!guessable) setProblem(submitProblem(error))
+      // drawn at once, so the field is marked and the button is enabled again before the focus moves to the field
+      flushSync(() => {
+        setRefused(guessable)
+        setBusy(false)
+      })
+      if (guessable) focusFirstInvalid(form.current)
     }
   }
 
@@ -82,7 +97,7 @@ function AddChild() {
           label="Password"
           hint={
             <>
-              <Requirement met={!errors.password}>At least 6 characters</Requirement>
+              <Requirement met={values.password.length >= 8}>At least 8 characters</Requirement>
               <span className="mt-1 block">Pick one {who === 'Your child' ? 'your child' : who} can remember.</span>
             </>
           }
@@ -90,13 +105,50 @@ function AddChild() {
           value={values.password}
           onChange={(e) => setValues((v) => ({ ...v, password: e.target.value }))}
           autoComplete="off"
+          ref={passwordInput}
         />
+        <button
+          type="button"
+          className="btn btn-text justify-self-start"
+          onClick={() => {
+            setValues((v) => ({ ...v, password: makePassword(v.name, v.username) }))
+            passwordInput.current.focus() // the field is read out with its new value
+          }}
+        >
+          Make one for me
+        </button>
 
         {!errors.username && (
           <Message>
             {who} will sign in with the username <span className="font-semibold">{values.username}</span>.
           </Message>
         )}
+        <div className="grid gap-2">
+          <label className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              className="mt-0.5 size-5 shrink-0"
+              checked={consent}
+              onChange={(e) => setConsent(e.target.checked)}
+              aria-invalid={shown('consent') ? 'true' : undefined}
+              aria-describedby={shown('consent') ? 'consent-error' : undefined}
+            />
+            <span>
+              I am {whose} parent or guardian, and I agree to GrowKid keeping {whose} tasks, photos and videos as Safety and privacy
+              describes.
+            </span>
+          </label>
+          {shown('consent') && (
+            <p id="consent-error" className="type-small text-coral-700">
+              {errors.consent}
+            </p>
+          )}
+          <p className="type-small muted">
+            <Link to="/privacy" className="font-medium text-navy-800 underline underline-offset-4">
+              Read Safety and privacy
+            </Link>
+          </p>
+        </div>
         {problem && (
           <Message tone="danger" alert>
             {problem}
@@ -160,10 +212,12 @@ function Rename({ child, onRenamed }) {
 function ResetPassword({ child }) {
   const [password, setPassword] = useState('')
   const [state, setState] = useState({})
-  const error = state.tried ? rules.childPassword(password) : null
+  const passwordInput = useRef(null)
+  const error = state.refused?.value === password ? state.refused.text : state.tried ? rules.childPassword(password) : null
 
   async function submit(event) {
     event.preventDefault()
+    const form = event.currentTarget
     if (rules.childPassword(password)) return setState({ tried: true })
     setState({ busy: true })
     try {
@@ -171,7 +225,10 @@ function ResetPassword({ child }) {
       setState({ done: password }) // shown once, here, then gone when the parent leaves the page
       setPassword('')
     } catch (failure) {
-      setState({ problem: errorText(noticeExpiry(failure)) })
+      noticeExpiry(failure)
+      const refused = refusedPassword(failure, 'password', password)
+      flushSync(() => setState(refused ? { refused } : { problem: errorText(failure) })) // drawn before the focus moves
+      if (refused) focusFirstInvalid(form)
     }
   }
 
@@ -193,12 +250,23 @@ function ResetPassword({ child }) {
           <PasswordField
             startVisible
             label="New password"
-            hint={<Requirement met={password.length >= 6}>At least 6 characters</Requirement>}
+            hint={<Requirement met={password.length >= 8}>At least 8 characters</Requirement>}
             error={error}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="off"
+            ref={passwordInput}
           />
+          <button
+            type="button"
+            className="btn btn-text justify-self-start"
+            onClick={() => {
+              setPassword(makePassword(child.name, child.username))
+              passwordInput.current.focus() // the field is read out with its new value
+            }}
+          >
+            Make one for me
+          </button>
           {state.problem && (
             <Message tone="danger" alert>
               {state.problem}
@@ -210,6 +278,62 @@ function ResetPassword({ child }) {
         </>
       )}
     </form>
+  )
+}
+
+/** Rule 26, L5: ends the child's sessions on every device. The password stays, so the child signs in again with it. */
+function SignOutEverywhere({ child }) {
+  const dialog = useRef(null)
+  const [state, setState] = useState({})
+
+  async function end() {
+    setState({ busy: true })
+    try {
+      await api.endChildSessions(child.id)
+      dialog.current.close()
+      setState({ done: true })
+    } catch (failure) {
+      noticeExpiry(failure)
+      setState(dialog.current?.open ? { problem: errorText(failure) } : {}) // closed meanwhile: nothing to show it in
+    }
+  }
+
+  return (
+    <div className="grid max-w-md gap-4">
+      <p className="muted">
+        Use this if {child.name} is still signed in on a device they no longer use, or one that is lost. The password stays the same.
+      </p>
+      {state.done && (
+        <Message tone="success" role="status">
+          {child.name} is signed out everywhere.
+        </Message>
+      )}
+      <button type="button" className="btn btn-secondary justify-self-start" onClick={() => dialog.current.showModal()}>
+        Sign {child.name} out everywhere
+      </button>
+
+      <dialog ref={dialog} className="dialog" aria-labelledby="sessions-title" onClose={() => setState((s) => (s.done ? s : {}))}>
+        <h2 id="sessions-title" className="type-subheading">
+          Sign {child.name} out everywhere?
+        </h2>
+        <p className="mt-2">
+          {child.name} is signed out on every phone, tablet and computer, and signs in again with the same username and password.
+        </p>
+        {state.problem && (
+          <Message tone="danger" alert className="mt-4">
+            {state.problem}
+          </Message>
+        )}
+        <div className="mt-6 grid gap-3 sm:flex">
+          <button type="button" className="btn btn-secondary" onClick={() => dialog.current.close()}>
+            Keep {child.name} signed in
+          </button>
+          <button type="button" className="btn btn-primary" disabled={state.busy} onClick={end}>
+            {state.busy ? 'Signing out…' : `Sign ${child.name} out everywhere`}
+          </button>
+        </div>
+      </dialog>
+    </div>
   )
 }
 
@@ -300,6 +424,12 @@ function EditChild({ id }) {
           Password
         </h2>
         <ResetPassword child={child} />
+      </section>
+      <section className="mt-8 border-t pt-6" aria-labelledby="sessions-section-title">
+        <h2 id="sessions-section-title" className="type-subheading mb-4">
+          Signed-in devices
+        </h2>
+        <SignOutEverywhere child={child} />
       </section>
       <section className="mt-8 border-t pt-6" aria-labelledby="remove-section-title">
         <h2 id="remove-section-title" className="type-subheading mb-4">
