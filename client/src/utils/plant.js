@@ -1,3 +1,4 @@
+import { plural } from './format.js'
 /** K9: the plant's ten stages, one per level, seed to tree. Past level 10 it stays the last and counts a ring a level. */
 export const STAGES = ['Seed', 'Sprout', 'Seedling', 'Young plant', 'Leafy plant', 'Bush', 'Sapling', 'Young tree', 'Tall tree', 'Big tree']
 
@@ -10,5 +11,5 @@ export function plantOf(level) {
 /** "Level 3: Seedling", "Level 12: Big tree, 2 rings". */
 export function plantText(level) {
   const { name, rings } = plantOf(level)
-  return `Level ${level}: ${name}${rings ? `, ${rings} ${rings === 1 ? 'ring' : 'rings'}` : ''}`
+  return `Level ${level}: ${name}${rings ? `, ${plural(rings, 'ring')}` : ''}`
 }

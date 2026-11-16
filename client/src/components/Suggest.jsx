@@ -6,6 +6,7 @@ import { IDEAS, ideaWords } from '../utils/ideas.js'
 import { errorText } from '../utils/messages.js'
 import { Field } from './Field.jsx'
 import { Result } from './states.jsx'
+import { busyProps } from '../utils/forms.js'
 
 const MOST = 3 // the server's cap on waiting suggestions (rules.js CAPS.suggestions)
 
@@ -57,7 +58,7 @@ export default function AskForTask({ className = '' }) {
               </optgroup>
             ))}
           </Field>
-          <button type="submit" className="btn btn-secondary" disabled={busy}>
+          <button type="submit" className="btn btn-secondary" {...busyProps(busy)}>
             {busy ? 'Asking…' : 'Ask for this task'}
           </button>
         </form>

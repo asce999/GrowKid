@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { flushSync } from 'react-dom'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Plus, SlidersHorizontal } from 'lucide-react'
 import * as api from '../api/index.js'
@@ -10,13 +11,14 @@ import { useOnce } from '../hooks/useOnce.js'
 import { CATEGORIES } from '../utils/categories.js'
 import { errorText } from '../utils/messages.js'
 import { STATUS_WORDS, repeatText, statusOf } from '../utils/tasks.js'
+import { focusLater, busyProps } from '../utils/forms.js'
 
 // Every task in the family, soonest due first: a table on wide screens, stacked rows on a phone.
 // The filters live in the address, so a filtered list can be reloaded, shared and gone back to.
 // A phone has one filter control, which opens them; a wider screen shows them all.
 
 const PAGE = 50
-const STATUSES = ['todo', 'overdue', 'review', 'sentBack', 'approved'] // the ones a task can be in today
+const STATUSES = ['todo', 'dueSoon', 'overdue', 'review', 'sentBack', 'approved'] // the ones a task can be in today
 const cell = 'px-6 py-3 text-left align-middle'
 
 function Filter({ label, value, onChange, children }) {
@@ -61,7 +63,7 @@ export default function Tasks() {
   const shown = tasks.filter(
     (task) =>
       (!child || task.childId === child) &&
-      (!status || statusOf(task) === status) &&
+      (!status || statusOf(task) === status || (status === 'todo' && statusOf(task) === 'dueSoon')) &&
       (!category || task.category === category),
   )
   const several = family.length > 1
@@ -93,14 +95,14 @@ export default function Tasks() {
       </div>
 
       {note?.created && (
-        <Message tone="success" className="mt-4">
+        <Message ref={focusLater} tabIndex={-1} tone="success" role="status" className="mt-4">
           {note.created.repeats
             ? `“${note.created.title}” is set up. ${note.created.repeats}: ${note.created.childName} sees each day’s task on Today.`
             : `“${note.created.title}” was created. ${note.created.childName} will see it on Today.`}
         </Message>
       )}
       {note?.deleted && (
-        <Message tone="success" className="mt-4">
+        <Message ref={focusLater} tabIndex={-1} tone="success" role="status" className="mt-4">
           “{note.deleted}” was deleted.
         </Message>
       )}
@@ -172,7 +174,10 @@ export default function Tasks() {
                 <EmptyState
                   title="No tasks match"
                   action={
-                    <button type="button" className="btn btn-secondary" onClick={() => setFilters({}, { replace: true })}>
+                    <button type="button" className="btn btn-secondary" onClick={() => {
+                      flushSync(() => setFilters({}, { replace: true }))
+                      document.getElementById('task-list')?.focus() // Phase 7: the list the filters were hiding
+                    }}>
                       Clear the filters
                     </button>
                   }
@@ -181,7 +186,7 @@ export default function Tasks() {
                 </EmptyState>
               </div>
             ) : (
-              <div className="mt-3 overflow-hidden rounded-card border bg-white">
+              <div id="task-list" tabIndex={-1} aria-label="Tasks" className="mt-3 overflow-hidden rounded-card border bg-white">
                 <table className="hidden w-full sm:table">
                   <caption className="sr-only">Tasks, soonest due first</caption>
                   <thead>
@@ -247,7 +252,7 @@ export default function Tasks() {
                     {older.problem}
                   </Message>
                 )}
-                <button type="button" className="btn btn-secondary" disabled={older.busy} onClick={showMore}>
+                <button type="button" className="btn btn-secondary" {...busyProps(older.busy)} onClick={showMore}>
                   {older.busy ? 'Loading…' : shown.length > limit ? 'Show more' : 'Show older approved tasks'}
                 </button>
               </div>

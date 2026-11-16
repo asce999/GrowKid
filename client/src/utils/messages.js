@@ -1,13 +1,14 @@
+import { plural } from './format.js'
 const TEXT = {
   NETWORK: 'GrowKid could not be reached. Check your connection and try again.',
   NOT_SIGNED_IN: 'You have been signed out. Sign in again to carry on.',
-  NOT_ALLOWED: 'Your account cannot do that.',
+  NOT_ALLOWED: 'Your account cannot do that. Sign in with the account it belongs to.',
   INVALID: 'Some details were not accepted. Check them and try again.',
   NOT_FOUND: 'That no longer exists. It may have been deleted.',
   LOCKED: 'That can no longer be changed.',
   NOT_ENOUGH: 'You do not have enough points for that yet.',
   TOO_MANY: 'Too many tries. Wait a while, then try again.',
-  PAUSED: 'This family’s account is paused while a report is looked at.',
+  PAUSED: 'This family’s account is paused while a report is looked at. Try again later.',
 }
 
 /** Sitemap rule 27, L6 and L9: what to say for each cap, by the refusal's fields.quota. */
@@ -32,7 +33,7 @@ const FALLBACK = 'Something went wrong on our side. Try again in a moment.'
 /** Plain words for a failed request: what happened and what to do. A paused limit says how long to wait when the server said (L2). */
 export function errorText(error) {
   const { code, fields } = error ?? {}
-  if (code === 'TOO_MANY' && fields?.minutes > 0) return `Too many tries. Try again in ${fields.minutes} ${fields.minutes === 1 ? 'minute' : 'minutes'}.`
+  if (code === 'TOO_MANY' && fields?.minutes > 0) return `Too many tries. Try again in ${plural(fields.minutes, 'minute')}.`
   if (code === 'QUOTA') return QUOTA[fields?.quota] ?? FALLBACK
   return TEXT[code] ?? FALLBACK
 }

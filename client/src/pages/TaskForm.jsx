@@ -2,13 +2,14 @@ import { useEffect, useId, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Star } from 'lucide-react'
 import * as api from '../api/index.js'
+import KeepWork from '../components/KeepWork.jsx'
 import { Field } from '../components/Field.jsx'
 import { ErrorState, Message, PageLoading } from '../components/states.jsx'
 import { AddChildFirst, TaskCard } from '../components/Task.jsx'
 import { useForm } from '../hooks/useForm.js'
 import { useLoad } from '../hooks/useLoad.js'
 import { CATEGORIES } from '../utils/categories.js'
-import { focusFirstInvalid } from '../utils/forms.js'
+import { busyProps, focusFirstInvalid } from '../utils/forms.js'
 import { addDays, dayKeyOf, fromLocalInput, toLocalInput, weekdayOf } from '../utils/format.js'
 import { AGES, IDEAS } from '../utils/ideas.js'
 import { rules } from '../utils/rules.js'
@@ -88,7 +89,7 @@ function Form({ family, task, latest }) {
   const navigate = useNavigate()
   const [asked] = useSearchParams()
   const location = useLocation()
-  const { form, values, setValues, busy, problem, shown: shownOf, submit: send } = useForm(() => {
+  const { form, values, setValues, busy, problem, shown: shownOf, submit: send, changed } = useForm(() => {
     if (task) {
       const { childId, category, title, instructions, doneLooksLike, points } = task
       return { childId, category, title, instructions, doneLooksLike, due: toLocalInput(task.dueAt), points, repeat: 'never', days: 0, time: '18:00' }
@@ -169,6 +170,7 @@ function Form({ family, task, latest }) {
       <h1>{heading}</h1>
 
       <div className="mt-6 grid items-start gap-12 lg:grid-cols-[minmax(0,28rem)_minmax(0,24rem)]">
+        <KeepWork dirty={changed} what="the task you typed" />
         <form ref={form} className="grid gap-5" onSubmit={submit} noValidate>
           <Field as="select" label="Child" error={shown('childId')} name="childId" value={values.childId} onChange={set('childId')}>
             {family.length > 1 && <option value="">Choose a child</option>}
@@ -358,7 +360,7 @@ function Form({ family, task, latest }) {
             </Message>
           )}
           <div className="flex flex-wrap gap-3">
-            <button className="btn btn-primary" disabled={busy}>
+            <button className="btn btn-primary" {...busyProps(busy)}>
               {busy ? 'Saving…' : task ? 'Save changes' : 'Create task'}
             </button>
             <Link to={back} className="btn btn-text">

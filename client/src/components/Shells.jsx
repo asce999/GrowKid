@@ -9,6 +9,7 @@ import { homeFor, useSession } from '../store/session.js'
 import { initialOf } from '../utils/format.js'
 import Badge from './Badge.jsx'
 import Logo from './Logo.jsx'
+import { busyProps } from '../utils/forms.js'
 
 // The page shells. One product at two volumes (DESIGN.md section 11): the parent's shell is
 // white and quiet, the child's commits to navy. Both mark the current page the same way.
@@ -159,7 +160,7 @@ function SoundSwitch() {
     setBusy(false)
   }
   return (
-    <button type="button" role="switch" aria-checked={on} className="nav-item w-full" disabled={busy} onClick={toggle}>
+    <button type="button" role="switch" aria-checked={on} className="nav-item w-full" {...busyProps(busy)} onClick={toggle}>
       {on ? <Volume2 className="size-5 shrink-0" aria-hidden="true" /> : <VolumeX className="size-5 shrink-0" aria-hidden="true" />}
       Sound
       <span className="type-small muted ml-auto" aria-hidden="true">

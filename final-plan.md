@@ -435,26 +435,26 @@ Acceptance:
 The app is already clean. This phase removes the places where it drops what a person typed, loses their place, or shuts someone out.
 
 **Forms and messages**
-1. - [ ] **Do not lose typed work.** Cancel, Back or a link drops a typed task, a note, a chosen file or a report without asking (`TaskForm.jsx:124`, `ChildTask.jsx:47-69`, `ParentRewards.jsx:291`, `Report.jsx:169`). While a form has changes, ask first, with React Router's `useBlocker` and `beforeunload`. **(M, audit)**
-2. - [ ] **Check reward and quest forms before sending.** They send `Number('')` and repeat the server's limits as fixed text (`ParentRewards.jsx:206,214-215,359-370`). Add their rules to `utils/rules.js`, as the task form has. **(S, audit)**
-3. - [ ] **A new child's password: a Copy button, and no copy left behind.** Add Copy where the password is shown once (`Family.jsx:29`, `ChildForm.jsx:187`). Pass it in memory, not in the browser's history state (`ChildForm.jsx:45`), where it survives a reload. **(S, audit)**
-4. - [ ] **Deleting the family on a broken connection** says "Nothing was deleted", although it may have been. Say what is known. **(S, review)**
-5. - [ ] **The "Due soon" state,** by the rule in section 3. It is the one task state DESIGN.md §18 lists as not built. **(S, new)**
+1. - [x] **Do not lose typed work.** Cancel, Back or a link drops a typed task, a note, a chosen file or a report without asking (`TaskForm.jsx:124`, `ChildTask.jsx:47-69`, `ParentRewards.jsx:291`, `Report.jsx:169`). While a form has changes, ask first, with React Router's `useBlocker` and `beforeunload`. **(M, audit)**
+2. - [x] **Check reward and quest forms before sending.** They send `Number('')` and repeat the server's limits as fixed text (`ParentRewards.jsx:206,214-215,359-370`). Add their rules to `utils/rules.js`, as the task form has. **(S, audit)**
+3. - [x] **A new child's password: a Copy button, and no copy left behind.** Add Copy where the password is shown once (`Family.jsx:29`, `ChildForm.jsx:187`). Pass it in memory, not in the browser's history state (`ChildForm.jsx:45`), where it survives a reload. **(S, audit)**
+4. - [x] **Deleting the family on a broken connection** says "Nothing was deleted", although it may have been. Say what is known. **(S, review)**
+5. - [x] **The "Due soon" state,** by the rule in section 3. It is the one task state DESIGN.md §18 lists as not built. **(S, new)**
 
 **Accessibility**
-6. - [ ] **Focus goes somewhere useful.**
+6. - [x] **Focus goes somewhere useful.**
    - Focus stays on Save after Settings saves, and in the older forms.
    - "Try again" in ErrorState, Report and Proof moves focus to what it loaded.
    - Resolving a report focuses the confirmation, not `<main>`.
    - A success message that arrives with a page change gets focus or `role="status"` (`Tasks.jsx:75-84`, `Overview.jsx:44-53`, `TaskDetail.jsx:239-243`, `Family.jsx:45`, `ChildForm.jsx:152`).
    - After a child's password is reset, focus moves to the new password (`ChildForm.jsx:183-190`).
    - "Clear the filters" (`Tasks.jsx:152`) and "See your reports" (`Report.jsx:152`) move focus to what they show. **(S to M, review, audit)**
-7. - [ ] **Busy buttons keep focus.** Sixteen buttons use `disabled={busy}`, which drops focus to the page and leaves it lost after a failure. One `SubmitButton` with `aria-disabled`, as Sign out already does (`Shells.jsx:101-104`). **(S to M, audit)**
-8. - [ ] **Targets reach 44 px:** "Try again" (`min-h-0` today) and the Show and Hide password button, about 40 px (`Field.jsx:55`). **(S, review, audit)**
-9. - [ ] **Day marks not by colour alone.** A counted and a missed day differ mostly by fill, and the legend is hidden from screen readers (`index.css:905-913`, `Progress.jsx:204-219`). Put a tick and a dash inside the marks, as DESIGN.md §18 rule 6 asks. **(S, audit)**
-10. - [ ] **Reports reads properly aloud.** The line about a deleted account is one run-on sentence, and every report repeats the heading "The task it was sent from" (`Reports.jsx:23`); make it a level-3 heading under each report's own. **(S, review, audit)**
-11. - [ ] **`lang="en-IN"` and a `<noscript>` line** in `client/index.html`. **(S, audit)**
-12. - [ ] **The WCAG 2.2 AA pass,** with `design:accessibility-review`, over every route:
+7. - [x] **Busy buttons keep focus.** Sixteen buttons use `disabled={busy}`, which drops focus to the page and leaves it lost after a failure. One `SubmitButton` with `aria-disabled`, as Sign out already does (`Shells.jsx:101-104`). **(S to M, audit)**
+8. - [x] **Targets reach 44 px:** "Try again" (`min-h-0` today) and the Show and Hide password button, about 40 px (`Field.jsx:55`). **(S, review, audit)**
+9. - [x] **Day marks not by colour alone.** A counted and a missed day differ mostly by fill, and the legend is hidden from screen readers (`index.css:905-913`, `Progress.jsx:204-219`). Put a tick and a dash inside the marks, as DESIGN.md §18 rule 6 asks. **(S, audit)**
+10. - [x] **Reports reads properly aloud.** The line about a deleted account is one run-on sentence, and every report repeats the heading "The task it was sent from" (`Reports.jsx:23`); make it a level-3 heading under each report's own. **(S, review, audit)**
+11. - [x] **`lang="en-IN"` and a `<noscript>` line** in `client/index.html`. **(S, audit)**
+12. - [x] **The WCAG 2.2 AA pass,** with `design:accessibility-review`, over every route:
     - clear whatever Phase 1's axe run listed as known
     - reflow at 320 px, and at 200% zoom
     - forced colours (Windows high contrast) and reduced motion
@@ -462,13 +462,13 @@ The app is already clean. This phase removes the places where it drops what a pe
     - then hand the user an exact checklist for NVDA on this machine, and for TalkBack or VoiceOver over `npm run dev:lan`. Those are theirs to do. **(M, todo #17 to #19)**
 
 **The whole product, looked at once**
-13. - [ ] **A design pass over every screen.** `impeccable` critique first, at 360 px and 1280 px, as a parent, a child and a moderator, giving a ranked list of findings. Fix the high and medium ones with `frontend-design`, inside DESIGN.md. Then `design:design-critique` on the three screens people see most: Today, Overview and the parent's task page. A new token or component goes into DESIGN.md first. **(M to L, new)**
-14. - [ ] **A copy pass,** with `design:ux-copy`: every empty state, error, button and confirmation, in the child's shell and the parent's. Short sentences on child screens, no guilt, the next step always named. **(S to M, new)**
-15. - [ ] **A `web-design-guidelines` audit** of the whole client, fixed until no high finding is open. **(S to M)**
+13. - [x] **A design pass over every screen.** `impeccable` critique first, at 360 px and 1280 px, as a parent, a child and a moderator, giving a ranked list of findings. Fix the high and medium ones with `frontend-design`, inside DESIGN.md. Then `design:design-critique` on the three screens people see most: Today, Overview and the parent's task page. A new token or component goes into DESIGN.md first. **(M to L, new)**
+14. - [x] **A copy pass,** with `design:ux-copy`: every empty state, error, button and confirmation, in the child's shell and the parent's. Short sentences on child screens, no guilt, the next step always named. **(S to M, new)**
+15. - [x] **A `web-design-guidelines` audit** of the whole client, fixed until no high finding is open. **(S to M)**
 
 **Code health**
-16. - [ ] **Split the two longest pages:** ParentRewards into its requests, rewards and quest parts; Progress into weeks, rest days, calendar and stickers, reusing `Streak.jsx`'s day marks. **(S, audit)**
-17. - [ ] **Small shared helpers:** one `LOCALE` with shared date and number formatters (16 places repeat them); `plural()` on `Intl.PluralRules`; store actions instead of `useSession.setState` in pages (`Settings.jsx:30`, `Landing.jsx:303`); one `useMedia` hook (`Stickers.jsx:57`, `ChildTask.jsx:58`); Landing's sticker count from one constant (`Landing.jsx:21-29,45,200`); the remaining forms onto `useForm` and `ConfirmDialog`. **(S to M, audit)**
+16. - [x] **Split the two longest pages:** ParentRewards into its requests, rewards and quest parts; Progress into weeks, rest days, calendar and stickers, reusing `Streak.jsx`'s day marks. **(S, audit)**
+17. - [x] **Small shared helpers:** one `LOCALE` with shared date and number formatters (16 places repeat them); `plural()` on `Intl.PluralRules`; store actions instead of `useSession.setState` in pages (`Settings.jsx:30`, `Landing.jsx:303`); one `useMedia` hook (`Stickers.jsx:57`, `ChildTask.jsx:58`); Landing's sticker count from one constant (`Landing.jsx:21-29,45,200`); the remaining forms onto `useForm` and `ConfirmDialog`. **(S to M, audit)** Done on 16 November 2026 for the name, quest, reward, report and moderator forms and both sign-out steps; the sign-in, sign-up, add-a-child, password, country, delete, decline-note, rest-day and ask-for-a-task forms keep their own flow, because their refusals are bound to what was typed (passwords, usernames, consent) and the loop test covers them; plurals that also change the verb ("1 proof is") stay written out.
 
 Acceptance: the loop test runs axe with no known-issue list left; the whole loop works by keyboard; no high finding is open from the critique or either audit; DESIGN.md matches the code.
 

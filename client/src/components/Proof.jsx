@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { FileText } from 'lucide-react'
 import { fileSizeText } from '../utils/format.js'
-import { Message } from './states.jsx'
+import { Message, RetryButton } from './states.jsx'
 
 /**
  * One proof: the photo, video or file, and the note. The family's own pictures are the real
@@ -10,6 +10,7 @@ import { Message } from './states.jsx'
  */
 export default function Proof({ proof, label, small = false, onRetry }) {
   const [broken, setBroken] = useState(false)
+  const id = useId() // Try again brings the focus back here, to the file it loaded again
   const type = proof.fileType ?? ''
   const image = type.startsWith('image/')
   // a video this browser cannot play, QuickTime often, is offered as a file to open instead
@@ -17,14 +18,12 @@ export default function Proof({ proof, label, small = false, onRetry }) {
   const look = `rounded-card border bg-navy-100 object-contain ${small ? 'max-h-56' : 'max-h-[75vh] w-full'}`
 
   return (
-    <div className="grid justify-items-start gap-3">
+    <div id={id} tabIndex={-1} className="grid justify-items-start gap-3">
       {proof.fileType && (!proof.fileUrl || (image && broken)) ? (
         <Message tone="warning">
           <p>The file did not load.</p>
           {onRetry && (
-            <button type="button" className="btn btn-text min-h-0 px-0" onClick={onRetry}>
-              Try again
-            </button>
+            <RetryButton onRetry={onRetry} target={`#${CSS.escape(id)}`} />
           )}
         </Message>
       ) : image ? (

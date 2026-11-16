@@ -7,10 +7,11 @@ import { EmptyState, ErrorState, Message, PageLoading } from '../components/stat
 import { CategoryTile, TaskRow } from '../components/Task.jsx'
 import { noticeExpiry, useLoad } from '../hooks/useLoad.js'
 import { useOnce } from '../hooks/useOnce.js'
-import { addDays, dayKeyOf, daysBetween, weekdayOf, whenText } from '../utils/format.js'
+import { addDays, dayKeyOf, daysBetween, weekdayOf, whenText, plural } from '../utils/format.js'
 import { ideaOf, ideaWords } from '../utils/ideas.js'
 import { errorText } from '../utils/messages.js'
 import { inThisWeek } from '../utils/tasks.js'
+import { focusLater, busyProps } from '../utils/forms.js'
 
 // The parent's home. It opens on what needs the parent now: proofs waiting, oldest first, and a
 // link when reward requests are waiting too. Then the week's tasks, then each child's progress in a line. Not a dashboard: nothing here is a
@@ -58,19 +59,22 @@ function LastWeek({ family, tasks, growth }) {
   if (weekdayOf(today) > 2) return null
   const monday = addDays(today, -weekdayOf(today))
   const lastMonday = addDays(monday, -7)
+  const rows = family
+    .map((child) => ({ child, due: tasks.filter((t) => t.childId === child.id && dayKeyOf(t.dueAt) >= lastMonday && dayKeyOf(t.dueAt) < monday) }))
+    .filter(({ due }) => due.length > 0)
+  if (rows.length === 0) return null
   return (
-    <section className="mt-6 rounded-card border bg-white p-4 sm:p-6" aria-labelledby="last-week">
+    <section className="rounded-card border bg-white p-4 sm:p-6" aria-labelledby="last-week">
       <h2 id="last-week" className="type-subheading">
         Last week
       </h2>
       <ul className="mt-2 grid gap-1">
-        {family.map((child) => {
-          const due = tasks.filter((t) => t.childId === child.id && dayKeyOf(t.dueAt) >= lastMonday && dayKeyOf(t.dueAt) < monday)
+        {rows.map(({ child, due }) => {
           const days = growth[child.id]?.streak?.days ?? 0
           return (
             <li key={child.id}>
               <span className="font-medium">{child.name}</span>: {due.filter((t) => t.status === 'approved').length} of {due.length}{' '}
-              {due.length === 1 ? 'task' : 'tasks'} approved, and a streak of {days} {days === 1 ? 'day' : 'days'}.
+              {due.length === 1 ? 'task' : 'tasks'} approved, and a streak of {plural(days, 'day')}.
             </li>
           )
         })}
@@ -123,7 +127,7 @@ function Suggestions({ list, onAnswered }) {
             <button type="button" className="btn btn-secondary" onClick={() => make(suggestion)}>
               Make it a task
             </button>
-            <button type="button" className="btn btn-text" disabled={busy === suggestion.id} onClick={() => notNow(suggestion)}>
+            <button type="button" className="btn btn-text" {...busyProps(busy === suggestion.id)} onClick={() => notNow(suggestion)}>
               Not now<span className="sr-only">: {ideaWords(suggestion.ideaId)} for {suggestion.childName}</span>
             </button>
           </li>
@@ -164,12 +168,12 @@ export default function Overview() {
       <h1>Overview</h1>
 
       {note?.approved && (
-        <Message tone="success" className="mt-4">
+        <Message ref={focusLater} tabIndex={-1} tone="success" role="status" className="mt-4">
           Approved. {note.approved.child} earned {note.approved.points} points for “{note.approved.title}”.
         </Message>
       )}
       {note?.sentBack && (
-        <Message tone="success" className="mt-4">
+        <Message ref={focusLater} tabIndex={-1} tone="success" role="status" className="mt-4">
           “{note.sentBack.title}” went back to {note.sentBack.child} with your note. They see it on Today.
         </Message>
       )}
@@ -183,7 +187,6 @@ export default function Overview() {
       ))}
       <Suggestions list={suggestions} onAnswered={(id) => loaded.set((data) => ({ ...data, suggestions: data.suggestions.filter((s) => s.id !== id) }))} />
       <FirstSteps family={family} tasks={tasks} rewards={rewards} />
-      {family.length > 0 && tasks.length > 0 && <LastWeek family={family} tasks={tasks} growth={growth} />}
 
       {family.length === 0 ? (
         <div className="mt-6">
@@ -276,6 +279,9 @@ export default function Overview() {
             )}
           </div>
 
+          <div className="grid content-start gap-6">
+          {/* in the side column: the page opens on what needs the parent now (DESIGN.md section 18) */}
+          <LastWeek family={family} tasks={tasks} growth={growth} />
           <section aria-labelledby="progress-title">
             <h2 id="progress-title" className="type-subheading">
               Progress
@@ -300,6 +306,7 @@ export default function Overview() {
               ))}
             </ul>
           </section>
+          </div>
         </div>
       )}
     </>

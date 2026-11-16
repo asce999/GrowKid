@@ -4,6 +4,7 @@ import * as api from '../api/index.js'
 import { mayReloadOnce } from '../api/reload.js'
 import { useLoad } from '../hooks/useLoad.js'
 import { destinationFor, homeFor, useSession } from '../store/session.js'
+import { KeepWorkHost } from './KeepWork.jsx'
 import { EmptyState, ErrorState, OfflineBanner, PageLoading } from './states.jsx'
 
 // Who may open what, and where everyone else is sent (FRONTEND-SITEMAP.md section 3).
@@ -44,6 +45,7 @@ export function Root() {
       ) : (
         <Outlet />
       )}
+      <KeepWorkHost />
       <ScrollRestoration />
     </>
   )

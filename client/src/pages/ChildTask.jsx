@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Camera, FileText, PenLine, Upload } from 'lucide-react'
 import * as api from '../api/index.js'
+import KeepWork from '../components/KeepWork.jsx'
+import { useMedia } from '../hooks/useMedia.js'
 import { Cheer } from '../components/Cheer.jsx'
 import { Field } from '../components/Field.jsx'
 import Proof from '../components/Proof.jsx'
@@ -16,6 +18,7 @@ import { shrinkPhoto } from '../utils/photo.js'
 import { PROOF_TYPES, rules } from '../utils/rules.js'
 import { isOpen, statusOf } from '../utils/tasks.js'
 import NotFound from './NotFound.jsx'
+import { busyProps } from '../utils/forms.js'
 
 // A task as the child sees it, and the most repeated action in the product: sending proof.
 // It stays on this page, a step at a time: choose, look at it, send. Nothing is awarded here:
@@ -58,12 +61,13 @@ function SendProof({ task, again, onSent, onStale }) {
   const upload = useRef(null) // P11: the AbortController of the upload in flight
   useEffect(() => () => upload.current?.abort(), []) // leaving the page stops the upload
   // A phone or tablet opens its camera first. A desktop gets a file chooser and a place to drop.
-  const touch = window.matchMedia('(pointer: coarse)').matches
+  const touch = useMedia('(pointer: coarse)')
   const file = chosen?.file
   const sending = progress !== null
   const ready = Boolean(file) || note.trim() !== ''
   // one main button at a time: choosing, until there is something to send
   const main = ready ? 'btn-secondary' : 'btn-primary'
+  const dirty = ready // Phase 7: a chosen file or a typed note, sending or not, is not dropped by leaving
 
   useEffect(() => {
     if (!chosen) return
@@ -132,6 +136,7 @@ function SendProof({ task, again, onSent, onStale }) {
         choose(event.dataTransfer.files[0])
       }}
     >
+      <KeepWork dirty={dirty} what={file ? "the photo or video you chose" : "the note you typed"} />
       <h2 className="type-subheading">{again ? 'Try again' : 'Send proof'}</h2>
       <p className="muted mt-1">{again ? 'Fix what the note says, then send new proof.' : 'Show your parent that it is done.'}</p>
 
@@ -166,7 +171,7 @@ function SendProof({ task, again, onSent, onStale }) {
           )}
           <Chooser className={touch ? 'btn-text' : `btn-lg ${main}`} disabled={sending} onPick={pick}>
             {!touch && <Upload className="size-5 shrink-0" aria-hidden="true" />}
-            Choose a photo, video or file
+            Choose a photo or video
           </Chooser>
           {!touch && <p className="type-small muted text-center">Or drop it here. A photo or a video, up to 25 MB.</p>}
         </div>
@@ -211,7 +216,7 @@ function SendProof({ task, again, onSent, onStale }) {
         </div>
       )}
       {ready && (
-        <button ref={sendButton} className="btn btn-lg btn-primary mt-6 w-full scroll-mb-24 sm:w-auto sm:min-w-64" disabled={sending}>
+        <button ref={sendButton} className="btn btn-lg btn-primary mt-6 w-full scroll-mb-24 sm:w-auto sm:min-w-64" {...busyProps(sending)}>
           {sending ? 'Sending…' : failed ? 'Try again' : 'Send proof'}
         </button>
       )}

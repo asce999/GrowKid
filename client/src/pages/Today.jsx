@@ -16,10 +16,11 @@ import { noticeExpiry, useLoad } from '../hooks/useLoad.js'
 import { useSession } from '../store/session.js'
 import { plantOf } from '../utils/plant.js'
 import { play } from '../utils/sound.js'
-import { whenText } from '../utils/format.js'
+import { whenText, plural } from '../utils/format.js'
 import { errorText } from '../utils/messages.js'
 import { iconOf } from '../utils/stickers.js'
 import { clockText, isOpen, nextTask, remindsStreak, repeatText } from '../utils/tasks.js'
+import { busyProps } from '../utils/forms.js'
 
 // The child's home: the navy band with the level, the ruler, the weekly quest, the streak and
 // its reminder, then the one next task. It is also where the reward moment plays (DESIGN.md
@@ -113,9 +114,11 @@ function Agreement({ agreement, onAgreed }) {
           <h3 className="type-small muted mt-4 font-medium">Rewards</h3>
           <ul className="mt-1 grid gap-1">
             {agreement.rewards.map((reward) => (
-              <li key={reward.id} className="flex flex-wrap items-center gap-x-2 break-words">
-                <span>{reward.title}</span>
-                <Points value={reward.cost} short />
+              <li key={reward.id} className="flex items-start justify-between gap-3">
+                <span className="min-w-0 break-words">{reward.title}</span>
+                <span className="shrink-0">
+                  <Points value={reward.cost} short />
+                </span>
               </li>
             ))}
           </ul>
@@ -126,7 +129,7 @@ function Agreement({ agreement, onAgreed }) {
           {problem}
         </Message>
       )}
-      <button type="button" className="btn btn-secondary mt-4" disabled={busy} onClick={yes}>
+      <button type="button" className="btn btn-secondary mt-4" {...busyProps(busy)} onClick={yes}>
         I agree
       </button>
     </section>
@@ -190,7 +193,7 @@ function Band({ growth, moment, tasks, onShown }) {
             <span className="type-small muted block">New level</span>
             <span className="block font-semibold">Level {growth.level}</span>
             <span className="type-small block">
-              {plant.rings ? `Your tree has ${plant.rings} ${plant.rings === 1 ? 'ring' : 'rings'} now.` : `Your plant is a ${plant.name.toLowerCase()} now.`}
+              {plant.rings ? `Your tree has ${plural(plant.rings, 'ring')} now.` : `Your plant is a ${plant.name.toLowerCase()} now.`}
             </span>
           </p>
         </div>

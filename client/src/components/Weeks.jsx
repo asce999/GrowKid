@@ -1,5 +1,5 @@
-const dayMonth = new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short' })
-const tasksText = (n) => (n === 1 ? '1 task' : `${n} tasks`)
+import { dayMonth, plural } from '../utils/format.js'
+const tasksText = (n) => plural(n, 'task')
 
 /** Tasks approved in each of the last six weeks (rule 14; K4 on Growth). who and whose name the child: "Diya" and "Diya’s", or "you" and "yours". Every bar carries its number, so nothing rests on colour. */
 export default function Weeks({ weeks, who, whose, title = 'Tasks approved each week' }) {

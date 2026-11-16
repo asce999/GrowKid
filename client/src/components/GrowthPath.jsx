@@ -1,5 +1,6 @@
 import { MEASURE_WORDS, iconOf, isEarned } from '../utils/stickers.js'
 import Sticker from './Sticker.jsx'
+import { LOCALE } from '../utils/format.js'
 
 // What lies ahead for a child: the levels to come, and the stickers they are closest to. Both
 // only point at doing more real tasks (DESIGN.md section 10).
@@ -21,7 +22,7 @@ export function GrowthPath({ level, xpForNext, stickers }) {
             </span>
             <div className="min-w-0 flex-1">
               <p className="font-semibold">{n === level ? `Level ${n}: you are here` : `Level ${n}`}</p>
-              <p className="type-small muted">Starts at {((n - 1) * xpForNext).toLocaleString('en-IN')} XP</p>
+              <p className="type-small muted">Starts at {((n - 1) * xpForNext).toLocaleString(LOCALE)} XP</p>
               {sticker && (
                 <div className="mt-2 flex items-center gap-3">
                   <Sticker icon={iconOf(sticker)} shape={sticker.shape} tone={sticker.tone} slot={!earned} className="size-10" />

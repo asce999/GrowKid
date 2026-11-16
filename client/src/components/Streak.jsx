@@ -1,10 +1,24 @@
-import { Flame } from 'lucide-react'
+import { createElement } from 'react'
+import { Check, Flame, Minus } from 'lucide-react'
 import { DAY_SAID, dateOfKey, dayKeyOf, dayLabel } from '../utils/format.js'
 
 // P14: a day mark is the instant its day starts in the family's zone; its key is that day, labelled the same on every device
 const letter = dayLabel({ weekday: 'narrow' })
 const weekday = dayLabel({ weekday: 'long' })
 const named = (day) => dateOfKey(dayKeyOf(day))
+
+// Phase 7, item 9: a counted and a missed day differ by a mark inside, a tick or a dash, not by fill alone (DESIGN.md section 18, rule 6)
+const GLYPHS = { done: Check, missed: Minus }
+
+/** One day mark, with its tick or dash. as: the element (li in a list, span in a legend). Shared by the streak and Progress's calendar. */
+export function DayMark({ as = 'li', state, className = '', children }) {
+  return createElement(
+    as,
+    { className: `day-mark day-${state} relative ${className}` },
+    children,
+    GLYPHS[state] && createElement(GLYPHS[state], { className: 'day-glyph', 'aria-hidden': true, strokeWidth: 3 }),
+  )
+}
 
 /**
  * The streak: the flame, the number and the last seven days, today last. It is calm: a missed
@@ -21,12 +35,12 @@ export default function Streak({ streak, best = false }) {
       </p>
       <ol className="flex gap-1.5" aria-label="The last seven days">
         {streak.week.map(({ day, state }) => (
-          <li key={day} className={`day-mark day-${state}`}>
+          <DayMark key={day} state={state}>
             <span aria-hidden="true">{letter.format(named(day))}</span>
             <span className="sr-only">
               {weekday.format(named(day))}: {DAY_SAID[state]}
             </span>
-          </li>
+          </DayMark>
         ))}
       </ol>
     </div>

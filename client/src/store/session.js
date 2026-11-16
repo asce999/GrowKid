@@ -29,6 +29,8 @@ export const useSession = create((set) => ({
   },
   /** K10, K11: the signed-in child's own account as the server answered a change to it. */
   setUser: (user) => set({ user }),
+  /** Landing has said how the last session ended; there is nothing more to say. */
+  clearEnded: () => set({ ended: null }),
   signIn: async (details) => set({ user: await api.signIn(details), ended: null }),
   signUp: async (details) => set({ user: await api.signUp(details), ended: null }),
   signOut: async () => {

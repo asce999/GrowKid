@@ -71,6 +71,32 @@ export function EmptyState({ title, children, action }) {
   )
 }
 
+/**
+ * Phase 7, items 6 and 8: Try again, at full size. The message holding it goes away once it is pressed, so the focus would fall to
+ * the page; instead it moves to `target` (a selector, the page's main by default), which holds what was loaded again.
+ */
+export function RetryButton({ onRetry, target = '#main', className = 'btn btn-text px-0' }) {
+  const pressed = useRef(false)
+  useEffect(
+    () => () => {
+      if (pressed.current) setTimeout(() => document.querySelector(target)?.focus(), 0)
+    },
+    [target],
+  )
+  return (
+    <button
+      type="button"
+      className={className}
+      onClick={() => {
+        pressed.current = true
+        onRetry()
+      }}
+    >
+      Try again
+    </button>
+  )
+}
+
 /** The page could not load: what happened, and Try again. */
 export function ErrorState({ error, onRetry }) {
   return (
@@ -80,9 +106,9 @@ export function ErrorState({ error, onRetry }) {
         This page did not load
       </h2>
       <p className="muted mt-1 max-w-prose">{errorText(error)}</p>
-      <button type="button" className="btn btn-secondary mt-4" onClick={onRetry}>
-        Try again
-      </button>
+      <div className="mt-4">
+        <RetryButton onRetry={onRetry} className="btn btn-secondary" />
+      </div>
     </div>
   )
 }

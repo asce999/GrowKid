@@ -8,6 +8,8 @@ import { EmptyState, ErrorState, PageLoading, Result } from '../components/state
 import { Points } from '../components/Task.jsx'
 import { noticeExpiry, useLoad } from '../hooks/useLoad.js'
 import { errorText } from '../utils/messages.js'
+import { busyProps } from '../utils/forms.js'
+import { plural } from '../utils/format.js'
 
 // The child's reward shop: what the points they earned can be spent on, and what they have asked
 // for. Asking holds the points until a parent answers; spending never lowers the level.
@@ -88,7 +90,7 @@ export default function Rewards() {
                       Ask for <span className="font-medium">{reward.title}</span>? It holds {reward.cost} points until a parent answers.
                     </p>
                     <div className="mt-3 flex flex-wrap items-center gap-3">
-                      <button type="button" className="btn btn-primary" disabled={busy} autoFocus onClick={() => ask(reward)}>
+                      <button type="button" className="btn btn-primary" {...busyProps(busy)} autoFocus onClick={() => ask(reward)}>
                         Yes, ask
                       </button>
                       <button type="button" className="btn btn-text" onClick={() => cancel(reward.id)}>
@@ -114,16 +116,16 @@ export default function Rewards() {
                       </button>
                     ) : (
                       <p className="type-small muted">
-                        {reward.cost - balance} more {reward.cost - balance === 1 ? 'point' : 'points'} to go
+                        {plural(reward.cost - balance, 'more point', 'more points')} to go
                       </p>
                     )}
                     {goal?.id === reward.id ? (
-                      <button type="button" className="btn btn-text type-small" disabled={busy} onClick={() => choose(null)}>
+                      <button type="button" className="btn btn-text type-small" {...busyProps(busy)} onClick={() => choose(null)}>
                         Stop saving<span className="sr-only"> for {reward.title}</span>
                       </button>
                     ) : (
                       reward.cost > balance && (
-                        <button type="button" className="btn btn-text type-small" disabled={busy} onClick={() => choose(reward.id)}>
+                        <button type="button" className="btn btn-text type-small" {...busyProps(busy)} onClick={() => choose(reward.id)}>
                           Save for this<span className="sr-only">: {reward.title}</span>
                         </button>
                       )

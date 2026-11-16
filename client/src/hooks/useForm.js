@@ -16,6 +16,9 @@ export function useForm(initial) {
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState(null)
   const form = useRef(null)
+  const [start] = useState(() => JSON.stringify(values)) // Phase 7: the values the form opened with, to tell whether anything was typed
+  /** Whether something typed would be lost by leaving: values differ from the start and nothing is being sent (a save leaves busy on). */
+  const changed = !busy && JSON.stringify(values) !== start
 
   /** An onChange for a field: its event's value, or, with `read`, whatever read(event) gives. */
   const field = (name, read = (event) => event.target.value) => (event) => setValues((v) => ({ ...v, [name]: read(event) }))
@@ -36,5 +39,5 @@ export function useForm(initial) {
     }
   }
 
-  return { form, values, setValues, field, tried, busy, setBusy, problem, setProblem, shown, submit }
+  return { form, values, setValues, field, tried, busy, setBusy, problem, setProblem, shown, submit, changed }
 }

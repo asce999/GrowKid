@@ -11,9 +11,17 @@ export const STATUS_WORDS = {
   dueSoon: 'Due soon',
 }
 
-/** What a task shows as. "Overdue" is not stored: it is a To do task whose due time has passed. */
-export const statusOf = (task) =>
-  task.status === 'todo' && task.dueAt && new Date(task.dueAt) < now() ? 'overdue' : task.status
+const DUE_SOON = 24 * 3_600_000 // final plan section 3: "Due soon" is due within the next 24 hours
+
+/**
+ * What a task shows as. "Overdue" and "Due soon" are not stored: a To do task whose due time has passed is overdue, and one due
+ * within the next 24 hours is due soon (Phase 7, item 5).
+ */
+export const statusOf = (task) => {
+  if (task.status !== 'todo' || !task.dueAt) return task.status
+  const left = new Date(task.dueAt) - now()
+  return left < 0 ? 'overdue' : left <= DUE_SOON ? 'dueSoon' : 'todo'
+}
 
 /** A task takes proof while it is still to do, or after a parent sent it back. */
 export const isOpen = (task) => task.status === 'todo' || task.status === 'sentBack'

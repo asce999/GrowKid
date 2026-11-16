@@ -11,6 +11,11 @@ const PROOF_MAX_BYTES = 25 * 1024 * 1024
 /** The server's limits (sitemap rule 27): a name is at most 60 characters, a password at most 72 bytes (the bcrypt limit). */
 const nameTooLong = (v) => v.trim().length > 60
 const passwordTooLong = (v) => new TextEncoder().encode(v).length > 72
+/** A whole number typed into a field, from min to max in steps of step; '' and anything else is not one (Number('') is 0). */
+const whole = (v, min, max, step) => {
+  const n = Number(String(v).trim() === '' ? NaN : v)
+  return Number.isInteger(n) && n >= min && n <= max && n % step === 0
+}
 const TOO_LONG = 'That password is too long. Use 72 characters or fewer (fewer if it uses letters outside A to Z).'
 
 export const rules = {
@@ -28,6 +33,12 @@ export const rules = {
     if (!at) return `Add a day and time so ${who} knows when it is due.`
     return mustBeAhead && new Date(at) <= now() ? 'Pick a time that has not passed yet.' : null
   },
+  // Rules 18 and 19: a reward and a weekly quest, as the server checks them
+  rewardTitle: (v) => (v.trim().length >= 3 && v.trim().length <= 60 ? null : 'Give the reward a name of 3 to 60 characters.'),
+  rewardCost: (v) => (whole(v, 10, 1000, 10) ? null : 'Choose 10 to 1,000 points, in tens.'),
+  questTarget: (v) => (whole(v, 2, 20, 1) ? null : 'Choose 2 to 20 tasks.'),
+  questBonus: (v) => (whole(v, 10, 200, 5) ? null : 'Choose 10 to 200 points, in fives.'),
+  questSurprise: (v) => (v.trim().length <= 80 ? null : 'Keep the surprise to 80 characters.'),
   proofFile: (file) => {
     if (!PROOF_TYPES.split(',').includes(file.type)) return 'That kind of file cannot be sent. Choose a photo or a video.'
     if (file.size > PROOF_MAX_BYTES) return `That file is ${fileSizeText(file.size)}. The most that can be sent is 25 MB. Choose a smaller one.`

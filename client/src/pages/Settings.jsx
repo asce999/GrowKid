@@ -3,66 +3,31 @@ import { flushSync } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { TriangleAlert } from 'lucide-react'
 import * as api from '../api/index.js'
+import NameForm from '../components/NameForm.jsx'
+import ConfirmDialog from '../components/ConfirmDialog.jsx'
 import { NOTICE, canNotify, setNudge, wantsNudge } from '../api/notify.js'
 import { Field, PasswordField, Requirement } from '../components/Field.jsx'
 import { ErrorState, Message, PageLoading } from '../components/states.jsx'
 import { noticeExpiry, useLoad } from '../hooks/useLoad.js'
 import { useSession } from '../store/session.js'
-import { focusFirstInvalid, refusedPassword } from '../utils/forms.js'
+import { busyProps, focusFirstInvalid, refusedPassword } from '../utils/forms.js'
 import { errorText } from '../utils/messages.js'
 import { rules } from '../utils/rules.js'
+import { LOCALE } from '../utils/format.js'
 
 // The parent's own account: name, password, country, the family leaderboard switch, and deleting the
 // family's data. Short and plain (DESIGN.md section 12, principle 9). Deleting is the most destructive thing in the product, so
 // it says exactly what goes and asks for the password; it is not dressed up as a danger zone.
 
 function Name({ user }) {
-  const [name, setName] = useState(user.name)
-  const [state, setState] = useState({})
-
-  async function submit(event) {
-    event.preventDefault()
-    if (rules.name(name)) {
-      focusFirstInvalid(event.currentTarget)
-      return setState({ tried: true })
-    }
-    setState({ busy: true })
-    try {
-      useSession.setState({ user: await api.updateName(name) }) // the shell shows the name
-      setState({ saved: true })
-    } catch (failure) {
-      setState({ problem: errorText(noticeExpiry(failure)) })
-    }
-  }
-
   return (
-    <form className="grid max-w-md gap-4" onSubmit={submit} noValidate>
-      <Field
-        label="Your name"
-        hint="Your children see it beside every approval and note."
-        error={state.tried ? rules.name(name) : null}
-        value={name}
-        onChange={(e) => {
-          setName(e.target.value)
-          setState((s) => ({ tried: s.tried, busy: s.busy }))
-        }}
-        name="name"
-        autoComplete="name"
-      />
-      {state.problem && (
-        <Message tone="danger" alert>
-          {state.problem}
-        </Message>
-      )}
-      {state.saved && (
-        <Message tone="success" role="status">
-          Name saved.
-        </Message>
-      )}
-      <button className="btn btn-primary justify-self-start" disabled={state.busy}>
-        {state.busy ? 'Saving…' : 'Save name'}
-      </button>
-    </form>
+    <NameForm
+      label="Your name"
+      hint="Your children see it beside every approval and note."
+      initial={user.name}
+      autoComplete="name"
+      save={async (name) => useSession.getState().setUser(await api.updateName(name))} // the shell shows the name
+    />
   )
 }
 
@@ -126,7 +91,7 @@ function Password() {
           Password changed. Use the new one the next time you sign in.
         </Message>
       )}
-      <button className="btn btn-secondary justify-self-start" disabled={state.busy}>
+      <button className="btn btn-secondary justify-self-start" {...busyProps(state.busy)}>
         {state.busy ? 'Changing…' : 'Change password'}
       </button>
     </form>
@@ -135,58 +100,37 @@ function Password() {
 
 /** Rule 26, L5: signs the parent out on every other device. This one gets a fresh cookie and stays signed in. */
 function OtherDevices() {
-  const dialog = useRef(null)
-  const [state, setState] = useState({})
-
-  async function end() {
-    setState({ busy: true })
-    try {
-      await api.endOtherSessions()
-      dialog.current.close()
-      setState({ done: true })
-    } catch (failure) {
-      noticeExpiry(failure)
-      setState(dialog.current?.open ? { problem: errorText(failure) } : {}) // closed meanwhile: nothing to show it in
-    }
-  }
-
+  const confirm = useRef(null)
+  const [done, setDone] = useState(false)
   return (
     <div className="grid max-w-prose gap-4">
       <p className="muted">
         Use this if you signed in on a device you no longer use, or one that is lost. You stay signed in here, and your password
         stays the same.
       </p>
-      {state.done && (
+      {done && (
         <Message tone="success" role="status">
           Your other devices are signed out.
         </Message>
       )}
-      <button type="button" className="btn btn-secondary justify-self-start" onClick={() => dialog.current.showModal()}>
+      <button type="button" className="btn btn-secondary justify-self-start" onClick={() => confirm.current.open()}>
         Sign out other devices
       </button>
-
-      <dialog ref={dialog} className="dialog" aria-labelledby="devices-title" onClose={() => setState((s) => (s.done ? s : {}))}>
-        <h2 id="devices-title" className="type-subheading">
-          Sign out your other devices?
-        </h2>
-        <p className="mt-2">
-          Every other phone, tablet and computer signed in to your account is signed out. You stay signed in on this one. Your
-          children’s sign-ins are not changed.
-        </p>
-        {state.problem && (
-          <Message tone="danger" alert className="mt-4">
-            {state.problem}
-          </Message>
-        )}
-        <div className="mt-6 grid gap-3 sm:flex">
-          <button type="button" className="btn btn-secondary" onClick={() => dialog.current.close()}>
-            Leave them signed in
-          </button>
-          <button type="button" className="btn btn-primary" disabled={state.busy} onClick={end}>
-            {state.busy ? 'Signing out…' : 'Sign out other devices'}
-          </button>
-        </div>
-      </dialog>
+      <ConfirmDialog
+        ref={confirm}
+        title="Sign out your other devices?"
+        keep="Leave them signed in"
+        confirm="Sign out other devices"
+        busyText="Signing out…"
+        act={async () => {
+          await api.endOtherSessions()
+          confirm.current.close()
+          setDone(true)
+        }}
+      >
+        Every other phone, tablet and computer signed in to your account is signed out. You stay signed in on this one. Your children’s
+        sign-ins are not changed.
+      </ConfirmDialog>
     </div>
   )
 }
@@ -243,7 +187,7 @@ function Country({ settings, countries }) {
           Country saved.
         </Message>
       )}
-      <button className="btn btn-secondary justify-self-start" disabled={state.busy}>
+      <button className="btn btn-secondary justify-self-start" {...busyProps(state.busy)}>
         {state.busy ? 'Saving…' : 'Save country'}
       </button>
     </form>
@@ -336,7 +280,7 @@ function DeleteFamily({ user, family }) {
   const dialog = useRef(null)
   const [password, setPassword] = useState('')
   const [state, setState] = useState({})
-  const names = new Intl.ListFormat('en-IN', { type: 'conjunction' }).format(family.map((child) => child.name))
+  const names = new Intl.ListFormat(LOCALE, { type: 'conjunction' }).format(family.map((child) => child.name))
 
   async function submit(event) {
     event.preventDefault()
@@ -349,7 +293,14 @@ function DeleteFamily({ user, family }) {
       await deleteFamily(password) // signed out: the guard leaves for Landing, which says it is done
     } catch (failure) {
       noticeExpiry(failure)
-      setState(failure.code === 'WRONG_PASSWORD' ? { wrong: 'That is not your password. Nothing was deleted.' } : { problem: errorText(failure) })
+      // Phase 7, item 4: only a refusal before anything was touched means nothing was deleted; a broken connection or a server
+      // failure may have come after the delete, so say what is known and how to find out
+      const before = ['TOO_MANY', 'NOT_SIGNED_IN', 'INVALID'].includes(failure.code)
+      setState(
+        failure.code === 'WRONG_PASSWORD'
+          ? { wrong: 'That is not your password. Nothing was deleted.' }
+          : { problem: `${errorText(failure)} ${before ? 'Nothing was deleted.' : 'GrowKid could not tell whether the data was deleted. Reload the page: if you are signed out and cannot sign in again, it was.'}` },
+      )
     }
   }
 
@@ -405,14 +356,14 @@ function DeleteFamily({ user, family }) {
           </div>
           {state.problem && (
             <Message tone="danger" alert className="mt-4">
-              {state.problem} Nothing was deleted.
+              {state.problem}
             </Message>
           )}
           <div className="mt-6 grid gap-3 sm:flex">
             <button type="button" className="btn btn-secondary" onClick={() => dialog.current.close()}>
               Keep everything
             </button>
-            <button className="btn btn-danger" disabled={state.busy}>
+            <button className="btn btn-danger" {...busyProps(state.busy)}>
               {state.busy ? 'Deleting…' : 'Delete everything'}
             </button>
           </div>

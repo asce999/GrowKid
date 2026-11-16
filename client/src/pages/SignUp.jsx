@@ -7,7 +7,7 @@ import { AuthShell } from '../components/Shells.jsx'
 import { Message } from '../components/states.jsx'
 import { useLoad } from '../hooks/useLoad.js'
 import { useSession } from '../store/session.js'
-import { focusFirstInvalid, refusedPassword, submitProblem } from '../utils/forms.js'
+import { busyProps, focusFirstInvalid, refusedPassword, submitProblem } from '../utils/forms.js'
 import { rules } from '../utils/rules.js'
 
 // Only parents sign up (decision D1). A new parent is signed in and lands on Overview.
@@ -163,7 +163,7 @@ export default function SignUp() {
             The list of countries did not load.{' '}
             <button
               type="button"
-              className="btn btn-text min-h-0 px-1"
+              className="btn btn-text px-1"
               onClick={() => {
                 countries.reload()
                 select.current?.focus()
@@ -205,7 +205,7 @@ export default function SignUp() {
             {problem}
           </Message>
         )}
-        <button className="btn btn-lg btn-primary w-full sm:w-auto sm:justify-self-start" disabled={busy}>
+        <button className="btn btn-lg btn-primary w-full sm:w-auto sm:justify-self-start" {...busyProps(busy)}>
           {busy ? 'Creating your account…' : 'Create account'}
         </button>
       </form>

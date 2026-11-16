@@ -8,7 +8,10 @@ const task = (status, dueAt, id = status) => ({ id, status, dueAt, proofs: [] })
 
 // "Overdue" is a To do task whose due time has passed, and nothing else
 assert.equal(statusOf(task('todo', at(-1))), 'overdue')
-assert.equal(statusOf(task('todo', at(1))), 'todo')
+assert.equal(statusOf(task('todo', at(1))), 'dueSoon') // within 24 hours
+assert.equal(statusOf(task('todo', at(23.9))), 'dueSoon')
+assert.equal(statusOf(task('todo', at(25))), 'todo')
+assert.equal(statusOf(task('sentBack', at(1))), 'sentBack') // only a task still to do is due soon
 assert.equal(statusOf(task('review', at(-1))), 'review')
 
 // a task takes proof while it is to do or sent back

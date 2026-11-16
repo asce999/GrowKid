@@ -7,6 +7,7 @@ import { Message } from '../components/states.jsx'
 import { useLoad } from '../hooks/useLoad.js'
 import { useSession } from '../store/session.js'
 import { errorText } from '../utils/messages.js'
+import { busyProps } from '../utils/forms.js'
 
 // One page for a parent, a child and the moderator, with no role to pick (decision D1).
 // Nothing is remembered from the last person: both fields start empty on every visit.
@@ -91,7 +92,7 @@ export default function SignIn() {
             {problem}
           </Message>
         )}
-        <button className="btn btn-lg btn-primary w-full sm:w-auto sm:justify-self-start" disabled={busy}>
+        <button className="btn btn-lg btn-primary w-full sm:w-auto sm:justify-self-start" {...busyProps(busy)}>
           {busy ? 'Signing in…' : 'Sign in'}
         </button>
       </form>

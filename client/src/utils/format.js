@@ -2,6 +2,14 @@ import { now } from '../api/clock.js'
 
 // How names, times and sizes are written out. Indian English throughout.
 
+/** Phase 7, item 17: the one locale every date, number, list and plural on screen is written in. */
+export const LOCALE = 'en-IN'
+const plurals = new Intl.PluralRules(LOCALE)
+/** '16 Nov': a day and short month, as the weekly charts name a week. */
+export const dayMonth = new Intl.DateTimeFormat(LOCALE, { day: 'numeric', month: 'short' })
+/** "1 task", "3 tasks": the number and the word, by the locale's plural rule. many defaults to one + "s". */
+export const plural = (n, one, many = `${one}s`) => `${n.toLocaleString(LOCALE)} ${plurals.select(n) === 'one' ? one : many}`
+
 /**
  * P13: the family's time zone (rule 25), from the signed-in user; undefined (signed out, a moderator) means the device's. Every day
  * the screens work out is a day in this zone, the same as the server's, and so is every time they show.
@@ -11,10 +19,10 @@ export const setZone = (next) => {
   zone = next
 }
 /** A date formatter in the family's zone. Made when asked, so it follows the zone of whoever is signed in. */
-export const inZone = (options) => new Intl.DateTimeFormat('en-IN', { ...options, timeZone: zone })
-const nearby = new Intl.RelativeTimeFormat('en-IN', { numeric: 'auto' })
-const megabytes = new Intl.NumberFormat('en-IN', { style: 'unit', unit: 'megabyte', maximumFractionDigits: 1 })
-const kilobytes = new Intl.NumberFormat('en-IN', { style: 'unit', unit: 'kilobyte', maximumFractionDigits: 0 })
+export const inZone = (options) => new Intl.DateTimeFormat(LOCALE, { ...options, timeZone: zone })
+const nearby = new Intl.RelativeTimeFormat(LOCALE, { numeric: 'auto' })
+const megabytes = new Intl.NumberFormat(LOCALE, { style: 'unit', unit: 'megabyte', maximumFractionDigits: 1 })
+const kilobytes = new Intl.NumberFormat(LOCALE, { style: 'unit', unit: 'kilobyte', maximumFractionDigits: 0 })
 
 /** The parts of a time on the family's wall clock: year, month, day, hour (00 to 23), minute. */
 function wall(time) {
@@ -42,7 +50,7 @@ export const weekdayOf = (key) => (new Date(utcOf(key)).getUTCDay() + 6) % 7
  */
 export const dateOfKey = (key) => new Date(utcOf(key) + 12 * 3_600_000)
 /** A formatter for day keys: pass it dateOfKey(key). */
-export const dayLabel = (options) => new Intl.DateTimeFormat('en-IN', { ...options, timeZone: 'UTC' })
+export const dayLabel = (options) => new Intl.DateTimeFormat(LOCALE, { ...options, timeZone: 'UTC' })
 
 /** A time in day words: "today, 6:00 pm", "tomorrow, 7:00 pm", "Sat, 11 Oct, 5:00 pm", in the family's zone. Never a countdown. */
 export function whenText(iso) {

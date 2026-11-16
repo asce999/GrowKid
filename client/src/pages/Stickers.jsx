@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { Lock } from 'lucide-react'
 import * as api from '../api/index.js'
 import Badge from '../components/Badge.jsx'
+import { useMedia } from '../hooks/useMedia.js'
 import { ErrorState, PageLoading, Result } from '../components/states.jsx'
 import Sticker from '../components/Sticker.jsx'
 import { noticeExpiry, useLoad } from '../hooks/useLoad.js'
@@ -11,6 +12,7 @@ import { errorText } from '../utils/messages.js'
 import { categoryOf } from '../utils/categories.js'
 import { whenText } from '../utils/format.js'
 import { MEASURE_WORDS, iconOf, isEarned, tiltOf } from '../utils/stickers.js'
+import { busyProps } from '../utils/forms.js'
 
 // The sticker chart: every sticker there is, earned ones in colour and the rest as dashed,
 // named slots. Slots show what is possible, and the details say how far along each one is.
@@ -111,11 +113,11 @@ function BadgePicker({ stickers }) {
             </div>
           </fieldset>
           <div className="mt-4 flex flex-wrap items-center gap-3">
-            <button type="button" className="btn btn-primary" disabled={busy || !chosen} onClick={() => save(colour, pick)}>
+            <button type="button" className="btn btn-primary" {...busyProps(busy)} disabled={!chosen} onClick={() => save(colour, pick)}>
               Save badge
             </button>
             {user?.avatar && (
-              <button type="button" className="btn btn-text" disabled={busy} onClick={() => save(null, null)}>
+              <button type="button" className="btn btn-text" {...busyProps(busy)} onClick={() => save(null, null)}>
                 Take it off
               </button>
             )}
@@ -132,6 +134,7 @@ export default function Stickers() {
   const [params] = useSearchParams()
   const linked = params.get('sticker') // K13: the reward moment links a new sticker to its place here
   const [chosen, setChosen] = useState(linked)
+  const wide = useMedia(`(min-width: ${getComputedStyle(document.documentElement).getPropertyValue('--breakpoint-lg').trim() || '64rem'})`) // the details sit beside the chart from here
   const sheet = useRef(null)
 
   if (loaded.status === 'loading') return <PageLoading rows={3} />
@@ -143,8 +146,7 @@ export default function Stickers() {
   function choose(id) {
     setChosen(id)
     // beside the chart from the desktop width; below it, in a sheet
-    const wide = getComputedStyle(document.documentElement).getPropertyValue('--breakpoint-lg')
-    if (!window.matchMedia(`(min-width: ${wide})`).matches) sheet.current.showModal()
+    if (!wide) sheet.current.showModal()
   }
 
   return (

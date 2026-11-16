@@ -4,9 +4,6 @@ import { expect, test } from '@playwright/test'
 // The whole loop, in the built app: a throwaway family signs up, sets a task, proves it, approves it, spends the points, and is
 // deleted. Every page visited is checked with axe, and a Content-Security-Policy violation anywhere fails the test.
 
-/** Axe findings that exist today and wait for Phase 7's accessibility item. Nothing else serious or critical may appear. */
-const KNOWN = []
-
 const stamp = Date.now().toString(36)
 const parent = { name: 'Loop Parent', email: `loop-${stamp}@example.com`, password: `e2e-grown-${stamp}` }
 const child = { name: 'Looper', username: `loop${stamp}`.slice(0, 20), password: `e2e-small-${stamp}` }
@@ -16,7 +13,7 @@ test('a family signs up, a task is set, proved and approved, a reward is asked f
   const watch = (tab) => tab.on('console', (message) => /Content Security Policy/i.test(message.text()) && violations.push(message.text()))
   const accessible = async (tab) => {
     const { violations: found } = await new AxeBuilder({ page: tab }).analyze()
-    const bad = found.filter((v) => ['serious', 'critical'].includes(v.impact) && !KNOWN.includes(v.id))
+    const bad = found.filter((v) => ['serious', 'critical'].includes(v.impact)) // Phase 7: no known-issue list; nothing serious or critical may appear
     expect(bad.map((v) => `${new URL(tab.url()).pathname}: ${v.id} (${v.nodes.map((n) => n.target).join(', ')})`)).toEqual([])
   }
   watch(page)

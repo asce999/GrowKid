@@ -15,6 +15,7 @@ import { useOnce } from '../hooks/useOnce.js'
 import { errorText } from '../utils/messages.js'
 import { statusOf } from '../utils/tasks.js'
 import NotFound from './NotFound.jsx'
+import { busyProps } from '../utils/forms.js'
 
 // A task as the parent sees it. When proof is waiting it leads with the proof, shown large,
 // with Approve as the one main button, and a cheer to add to an approval just above it. Sending
@@ -113,10 +114,10 @@ function ReviewBar({ task, proof, cheer, onStale }) {
           ))}
         </div>
         <div className="mt-4 flex flex-wrap gap-3">
-          <button className="btn btn-primary" disabled={state.busy}>
+          <button className="btn btn-primary" {...busyProps(state.busy)}>
             {state.busy ? 'Sending back…' : 'Send back'}
           </button>
-          <button type="button" className="btn btn-text" disabled={state.busy} onClick={() => setWriting(false)}>
+          <button type="button" className="btn btn-text" {...busyProps(state.busy)} onClick={() => setWriting(false)}>
             Cancel
           </button>
         </div>
@@ -127,10 +128,10 @@ function ReviewBar({ task, proof, cheer, onStale }) {
     <div className="review-bar">
       {problem}
       <div className="grid grid-cols-2 gap-3">
-        <button type="button" className="btn btn-approve" disabled={state.busy} onClick={approve}>
+        <button type="button" className="btn btn-approve" {...busyProps(state.busy)} onClick={approve}>
           {state.busy ? 'Approving…' : 'Approve'}
         </button>
-        <button ref={sendBackButton} type="button" className="btn btn-secondary" disabled={state.busy} onClick={() => setWriting(true)}>
+        <button ref={sendBackButton} type="button" className="btn btn-secondary" {...busyProps(state.busy)} onClick={() => setWriting(true)}>
           Send back
         </button>
       </div>
@@ -298,7 +299,7 @@ function TaskPage({ taskId }) {
         <Points value={task.points} />
       </p>
       {note?.saved && (
-        <Message tone="success" className="mt-4">
+        <Message tone="success" role="status" className="mt-4">
           Changes saved.
         </Message>
       )}

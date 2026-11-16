@@ -1,14 +1,16 @@
 import { useState } from 'react'
+import { flushSync } from 'react-dom'
 import { Link, Navigate, useSearchParams } from 'react-router-dom'
 import { Check, Clock, Phone } from 'lucide-react'
 import * as api from '../api/index.js'
+import KeepWork from '../components/KeepWork.jsx'
 import { Field } from '../components/Field.jsx'
-import { Message } from '../components/states.jsx'
-import { noticeExpiry, useLoad } from '../hooks/useLoad.js'
+import { Message, RetryButton } from '../components/states.jsx'
+import { useForm } from '../hooks/useForm.js'
+import { useLoad } from '../hooks/useLoad.js'
 import { homeFor, useSession } from '../store/session.js'
 import { whenText } from '../utils/format.js'
-import { focusFirstInvalid } from '../utils/forms.js'
-import { errorText } from '../utils/messages.js'
+import { busyProps } from '../utils/forms.js'
 
 // Report a problem. The reader may be a worried child, so: few words, no blame, nothing to
 // choose from a list, and a confirmation that takes the whole screen and says what happens next.
@@ -51,9 +53,7 @@ function Mine({ reports }) {
     return (
       <Message tone="warning" className="mt-10">
         <p>Your earlier reports did not load. You can still send a new one.</p>
-        <button type="button" className="btn btn-text min-h-0 px-0" onClick={reports.reload}>
-          Try again
-        </button>
+        <RetryButton onRetry={reports.reload} target="#mine" />
       </Message>
     )
   }
@@ -107,31 +107,23 @@ export default function Report() {
   // P8: the one task, not the whole list to find it in; one that is not theirs (NOT_FOUND) is simply not attached
   const task = useLoad(async () => (taskId ? api.getTask(taskId).catch((error) => (error.code === 'NOT_FOUND' ? undefined : Promise.reject(error))) : undefined), [taskId])
   const mine = useLoad(api.listMyReports)
-  const [details, setDetails] = useState('')
-  const [aboutTask, setAboutTask] = useState(true)
-  const [state, setState] = useState({})
+  // Phase 7, item 17: on useForm. What was typed stays in the box after a refusal; once sent, the page says what happens next.
+  const { form, values, setValues, field, busy, setBusy, problem, shown, submit, changed } = useForm({ details: '', aboutTask: true })
+  const [state, setState] = useState({}) // { sent }: the confirmation in place of the form
   const child = user?.role === 'child'
-  const error = state.tried && !details.trim() ? 'Write a few words about what is wrong.' : null
+  const details = values.details
+  const errors = { details: details.trim() ? null : 'Write a few words about what is wrong.' }
 
-  async function submit(event) {
-    event.preventDefault()
-    if (!details.trim()) {
-      focusFirstInvalid(event.currentTarget)
-      return setState({ tried: true })
-    }
-    setState({ busy: true })
-    try {
-      await api.sendReport({ details, taskId: task.data && aboutTask ? task.data.id : undefined })
-      setDetails('')
+  const send = (event) =>
+    submit(event, errors, async () => {
+      await api.sendReport({ details, taskId: task.data && values.aboutTask ? task.data.id : undefined })
+      setValues({ details: '', aboutTask: true })
+      setBusy(false)
       setState({ sent: true })
       mine.reload()
       document.getElementById('main')?.focus() // the form has gone: start reading from the top
       window.scrollTo(0, 0)
-    } catch (failure) {
-      // what was typed stays in the box
-      setState({ problem: errorText(noticeExpiry(failure)) })
-    }
-  }
+    })
 
   if (user?.role === 'moderator') return <Navigate to={homeFor(user)} replace /> // reports come to them
   if (state.sent) {
@@ -150,7 +142,10 @@ export default function Report() {
           <Link to={homeFor(user)} className={`btn btn-primary ${child ? 'btn-lg' : ''}`}>
             {child ? 'Back to Today' : 'Back to Overview'}
           </Link>
-          <button type="button" className={`btn btn-text ${child ? 'btn-lg' : ''}`} onClick={() => setState({})}>
+          <button type="button" className={`btn btn-text ${child ? 'btn-lg' : ''}`} onClick={() => {
+              flushSync(() => setState({}))
+              document.getElementById('mine')?.focus() // Phase 7: straight to the reports, under the form
+            }}>
             See your reports
           </button>
         </div>
@@ -167,45 +162,45 @@ export default function Report() {
         {child ? 'Your parent is not told and cannot see it.' : 'Your children are not told and cannot see it.'}
       </p>
 
-      <form className="mt-6 grid gap-5" onSubmit={submit} noValidate>
+      <KeepWork dirty={changed} what="the report you typed" />
+      <form ref={form} className="mt-6 grid gap-5" onSubmit={send} noValidate>
         <Field
           as="textarea"
           rows={5}
           label="What is wrong?"
           hint={`Use your own words. A few are enough.${details.length > MAX - 200 ? ` ${MAX - details.length} characters left.` : ''}`}
-          error={error}
+          error={shown(errors, 'details')}
           value={details}
           name="details"
           autoComplete="off"
           maxLength={MAX}
-          onChange={(e) => {
-            setDetails(e.target.value)
-            setState((s) => (s.busy ? s : {}))
-          }}
+          onChange={field('details')}
         />
         {task.data && (
           <label className="flex min-h-11 items-start gap-3">
-            <input type="checkbox" className="mt-1 size-5 shrink-0" checked={aboutTask} onChange={(e) => setAboutTask(e.target.checked)} />
+            <input type="checkbox" className="mt-1 size-5 shrink-0" checked={values.aboutTask} onChange={field('aboutTask', (e) => e.target.checked)} />
             <span>
               This is about the task “{task.data.title}”
               <span className="type-small muted block">The moderator is shown how the task is written. Never a photo, and never your name.</span>
             </span>
           </label>
         )}
-        {state.problem && (
+        {problem && (
           <Message tone="danger" alert>
-            Your report was not sent. {state.problem} What you wrote is still here.
+            Your report was not sent. {problem} What you wrote is still here.
           </Message>
         )}
-        <button className={`btn btn-primary justify-self-start ${child ? 'btn-lg max-sm:w-full' : ''}`} disabled={state.busy}>
-          {state.busy ? 'Sending…' : 'Send report'}
+        <button className={`btn btn-primary justify-self-start ${child ? 'btn-lg max-sm:w-full' : ''}`} {...busyProps(busy)}>
+          {busy ? 'Sending…' : 'Send report'}
         </button>
       </form>
 
       <div className="mt-8">
         <Helpline />
       </div>
-      <Mine reports={mine} />
+      <div id="mine" tabIndex={-1}>
+        <Mine reports={mine} />
+      </div>
     </div>
   )
 }

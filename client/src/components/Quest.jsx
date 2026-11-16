@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Flag, Gift, Target } from 'lucide-react'
 import { Points } from './Task.jsx'
+import { plural } from '../utils/format.js'
 
 // The weekly quest a parent sets: tasks to get approved this week, for bonus points. It only
 // ever points at doing real tasks (DESIGN.md section 10).
@@ -23,7 +24,7 @@ export function GoalBar({ goal, balance }) {
       </div>
       <p className="type-small mt-2">
         {left > 0 ? (
-          `${left} more ${left === 1 ? 'point' : 'points'} to go.`
+          `${plural(left, 'more point', 'more points')} to go.`
         ) : (
           <>
             You have enough to ask for it.{' '}

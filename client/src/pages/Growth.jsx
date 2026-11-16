@@ -13,11 +13,12 @@ import Streak from '../components/Streak.jsx'
 import { CategoryTile, Points } from '../components/Task.jsx'
 import Weeks from '../components/Weeks.jsx'
 import { noticeExpiry, useLoad } from '../hooks/useLoad.js'
-import { dateOfKey, dayLabel, whenText } from '../utils/format.js'
+import { dateOfKey, dayLabel, whenText, plural } from '../utils/format.js'
 import { errorText } from '../utils/messages.js'
 import { plantOf, plantText } from '../utils/plant.js'
 import { iconOf, isEarned } from '../utils/stickers.js'
 import { lastReview } from '../utils/tasks.js'
+import { busyProps } from '../utils/forms.js'
 
 const weekStart = dayLabel({ day: 'numeric', month: 'long' }) // P14: a week's Monday as a key, the same day on every device
 
@@ -131,7 +132,7 @@ export default function Growth() {
                   {entry.you && ' (you)'}
                 </span>
                 <span className="shrink-0">
-                  {entry.tasks} {entry.tasks === 1 ? 'task' : 'tasks'}
+                  {plural(entry.tasks, 'task')}
                 </span>
               </li>
             ))}
@@ -143,7 +144,7 @@ export default function Growth() {
         <Weeks weeks={growth.weeks} who="you" whose="yours" title="Your weeks" />
         {growth.bestWeek > 0 && (
           <p className="mt-2 font-medium">
-            Your best week: {growth.bestWeek} {growth.bestWeek === 1 ? 'task' : 'tasks'}
+            Your best week: {plural(growth.bestWeek, 'task')}
           </p>
         )}
       </div>
@@ -180,7 +181,7 @@ export default function Growth() {
                   {morePhotos.problem}
                 </Message>
               )}
-              <button type="button" className="btn btn-secondary" disabled={morePhotos.busy} onClick={showMorePhotos}>
+              <button type="button" className="btn btn-secondary" {...busyProps(morePhotos.busy)} onClick={showMorePhotos}>
                 {morePhotos.busy ? 'Loading…' : 'Show more'}
               </button>
             </div>
@@ -246,7 +247,7 @@ export default function Growth() {
                   {more.problem}
                 </Message>
               )}
-              <button type="button" className="btn btn-secondary" disabled={more.busy} onClick={showMore}>
+              <button type="button" className="btn btn-secondary" {...busyProps(more.busy)} onClick={showMore}>
                 {more.busy ? 'Loading…' : 'Show more'}
               </button>
             </div>

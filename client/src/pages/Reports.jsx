@@ -1,13 +1,15 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { ChevronRight } from 'lucide-react'
 import * as api from '../api/index.js'
 import { Field } from '../components/Field.jsx'
 import { EmptyState, ErrorState, Message, PageLoading } from '../components/states.jsx'
 import { Points } from '../components/Task.jsx'
-import { noticeExpiry, useLoad } from '../hooks/useLoad.js'
+import KeepWork from '../components/KeepWork.jsx'
+import { useForm } from '../hooks/useForm.js'
+import { useLoad } from '../hooks/useLoad.js'
 import { whenText } from '../utils/format.js'
-import { focusFirstInvalid } from '../utils/forms.js'
-import { errorText } from '../utils/messages.js'
+import { busyProps } from '../utils/forms.js'
 
 // The moderator's one page: a work list. Reports waiting, oldest first; open one in place, read
 // it, answer it, and it leaves the list. No statistics and no user management (decision D3). A moderator is shown the
@@ -20,7 +22,7 @@ const FROM = { child: 'A child', parent: 'A parent' }
 function Item({ item }) {
   return (
     <div className="mt-4 border-l-2 border-navy-800 pl-4">
-      <h2 className="font-semibold">The task it was sent from</h2>
+      <h3 className="font-semibold">The task it was sent from</h3>
       <dl className="mt-2 grid gap-3">
         <div>
           <dt className="type-small muted">Title</dt>
@@ -57,49 +59,39 @@ function Item({ item }) {
 }
 
 function Answer({ report, onResolved, onStale }) {
-  const [note, setNote] = useState('')
-  const [state, setState] = useState({})
-
-  async function submit(event) {
-    event.preventDefault()
-    if (!note.trim()) {
-      focusFirstInvalid(event.currentTarget)
-      return setState({ tried: true })
-    }
-    setState({ busy: true })
-    try {
-      onResolved(await api.resolveReport(report.id, note))
-    } catch (failure) {
-      noticeExpiry(failure)
-      if (failure.code === 'LOCKED' || failure.code === 'NOT_FOUND') return onStale() // answered elsewhere, or the family deleted its data
-      setState({ problem: errorText(failure) }) // the answer stays in the box
-    }
-  }
+  // Phase 7, item 17: on useForm. The answer stays in the box after a refusal; a report dealt with elsewhere refreshes the list.
+  const { form, values, field, busy, problem, shown, submit, changed } = useForm({ answer: '' })
+  const errors = { answer: values.answer.trim() ? null : 'Write an answer. It is the only thing they get back.' }
+  const send = (event) =>
+    submit(
+      event,
+      errors,
+      async () => onResolved(await api.resolveReport(report.id, values.answer)),
+      (failure) => (failure.code === 'LOCKED' || failure.code === 'NOT_FOUND') && (onStale(), true), // answered elsewhere, or the family deleted its data
+    )
 
   return (
-    <form className="mt-6 grid gap-4" onSubmit={submit} noValidate>
+    <form ref={form} className="mt-6 grid gap-4" onSubmit={send} noValidate>
+      <KeepWork dirty={changed} what="the answer you typed" />
       <Field
         as="textarea"
         rows={4}
         label="Your answer"
         hint={`${FROM[report.from]} reads this, so write it for them. Nobody else is told, and nothing in their family is changed.`}
-        error={state.tried && !note.trim() ? 'Write an answer. It is the only thing they get back.' : null}
-        value={note}
+        error={shown(errors, 'answer')}
+        value={values.answer}
         name="answer"
         autoComplete="off"
         maxLength={500}
-        onChange={(e) => {
-          setNote(e.target.value)
-          setState((s) => (s.busy ? s : {}))
-        }}
+        onChange={field('answer')}
       />
-      {state.problem && (
+      {problem && (
         <Message tone="danger" alert>
-          The report was not resolved. {state.problem}
+          The report was not resolved. {problem}
         </Message>
       )}
-      <button className="btn btn-primary justify-self-start" disabled={state.busy}>
-        {state.busy ? 'Resolving…' : 'Mark resolved'}
+      <button className="btn btn-primary justify-self-start" {...busyProps(busy)}>
+        {busy ? 'Resolving…' : 'Mark resolved'}
       </button>
     </form>
   )
@@ -116,7 +108,7 @@ function ReportRow({ report, children }) {
             <span className="line-clamp-2 font-medium break-words group-open:line-clamp-none">{report.details}</span>
             <span className="type-small muted">
               {FROM[report.from]} sent this <time dateTime={report.sentAt}>{whenText(report.sentAt)}</time>
-              {report.item && ', from a task'}
+              {report.item && ', from a task'}.
             </span>
             {report.senderGone && (
               <span className="type-small muted">Their account has since been deleted, so an answer will not be kept.</span>
@@ -124,6 +116,10 @@ function ReportRow({ report, children }) {
           </span>
         </summary>
         <div className="max-w-prose px-4 pb-6 sm:px-6">
+          {/* Phase 7: each opened report has its own heading, so the task under it reads as part of this report */}
+          <h2 className="sr-only">
+            The report {FROM[report.from].toLowerCase()} sent {whenText(report.sentAt)}
+          </h2>
           {report.item ? <Item item={report.item} /> : <p className="type-small muted">It was not sent from a task, so there is nothing else to show.</p>}
           {children}
         </div>
@@ -135,6 +131,7 @@ function ReportRow({ report, children }) {
 export default function Reports() {
   const loaded = useLoad(api.listReports, [], { live: true })
   const [note, setNote] = useState(null)
+  const said = useRef(null)
   const [limit, setLimit] = useState(50) // P8: 50 at a time
 
   if (loaded.status === 'error') {
@@ -154,12 +151,14 @@ export default function Reports() {
     // ponytail: built on the list as it was when the answer was sent. A report that arrived in
     // that moment is back on the next reload: on focus, or within a minute.
     loaded.set(loaded.data.map((report) => (report.id === answered.id ? answered : report)))
-    setNote(
-      answered.senderGone
-        ? 'Resolved. Their account has since been deleted, so the answer was not kept.'
-        : 'Resolved. Your answer now shows on their Report a problem page.',
+    flushSync(() =>
+      setNote(
+        answered.senderGone
+          ? 'Resolved. Their account has since been deleted, so the answer was not kept.'
+          : 'Resolved. Your answer now shows on their Report a problem page.',
+      ),
     )
-    document.getElementById('main')?.focus() // the form that was used has gone
+    said.current?.focus() // Phase 7: the form that was used has gone; the confirmation says what happened
   }
   const stale = () => {
     setNote('That report had already been dealt with. The list is up to date now.')
@@ -174,7 +173,7 @@ export default function Reports() {
         {waiting.length === 0 ? 'No reports are waiting.' : waiting.length === 1 ? '1 report is waiting.' : `${waiting.length} reports are waiting, oldest first.`}
       </p>
       {note && (
-        <Message tone="success" className="mt-4" role="status">
+        <Message ref={said} tabIndex={-1} tone="success" className="mt-4" role="status">
           {note}
         </Message>
       )}

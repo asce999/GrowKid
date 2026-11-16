@@ -3,11 +3,15 @@ import { flushSync } from 'react-dom'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { KeyRound, TriangleAlert } from 'lucide-react'
 import * as api from '../api/index.js'
+import NameForm from '../components/NameForm.jsx'
+import ConfirmDialog from '../components/ConfirmDialog.jsx'
 import { Field, PasswordField, Requirement } from '../components/Field.jsx'
 import { ErrorState, Message, PageLoading, Result } from '../components/states.jsx'
 import { noticeExpiry, useLoad } from '../hooks/useLoad.js'
+import { carry } from '../hooks/useOnce.js'
+import CopyButton from '../components/CopyButton.jsx'
 import { whenText } from '../utils/format.js'
-import { focusFirstInvalid, refusedPassword, submitProblem } from '../utils/forms.js'
+import { busyProps, focusFirstInvalid, refusedPassword, submitProblem } from '../utils/forms.js'
 import { errorText } from '../utils/messages.js'
 import { asUsername, rules } from '../utils/rules.js'
 import { makePassword } from '../utils/words.js'
@@ -51,8 +55,9 @@ function AddChild() {
     setBusy(true)
     try {
       const child = await api.addChild({ ...values, consent })
-      // Family shows these once, then forgets them
-      navigate('/parent/family', { state: { added: { ...child, password: values.password } } })
+      // Family shows these once, then forgets them; the password goes in memory, never into the browser's history (Phase 7)
+      carry({ added: { ...child, password: values.password } })
+      navigate('/parent/family')
     } catch (error) {
       noticeExpiry(error)
       const guessable = refusedPassword(error, 'password', sent)
@@ -156,7 +161,7 @@ function AddChild() {
           </Message>
         )}
         <div className="flex flex-wrap gap-3">
-          <button className="btn btn-primary" disabled={busy}>
+          <button className="btn btn-primary" {...busyProps(busy)}>
             {busy ? 'Adding…' : 'Add child'}
           </button>
           <Link to="/parent/family" className="btn btn-text">
@@ -169,51 +174,14 @@ function AddChild() {
 }
 
 function Rename({ child, onRenamed }) {
-  const [name, setName] = useState(child.name)
-  const [state, setState] = useState({})
-  const error = state.tried ? rules.name(name) : null
-
-  async function submit(event) {
-    event.preventDefault()
-    if (rules.name(name)) return setState({ tried: true })
-    setState({ busy: true })
-    try {
-      onRenamed(await api.renameChild(child.id, name))
-      setState({ saved: true })
-    } catch (failure) {
-      setState({ problem: errorText(noticeExpiry(failure)) })
-    }
-  }
-
-  return (
-    <form className="grid max-w-md gap-4" onSubmit={submit} noValidate>
-      <Field
-        label="Child’s name"
-        error={error}
-        value={name}
-        onChange={(e) => {
-          setName(e.target.value)
-          setState((s) => ({ tried: s.tried, busy: s.busy }))
-        }}
-        autoComplete="off"
-      />
-      {state.problem && (
-        <Message tone="danger" alert>
-          {state.problem}
-        </Message>
-      )}
-      {state.saved && <Message tone="success">Name saved.</Message>}
-      <button className="btn btn-primary justify-self-start" disabled={state.busy}>
-        {state.busy ? 'Saving…' : 'Save name'}
-      </button>
-    </form>
-  )
+  return <NameForm label="Child’s name" initial={child.name} save={async (name) => onRenamed(await api.renameChild(child.id, name))} />
 }
 
 function ResetPassword({ child }) {
   const [password, setPassword] = useState('')
   const [state, setState] = useState({})
   const passwordInput = useRef(null)
+  const shown = useRef(null)
   const error = state.refused?.value === password ? state.refused.text : state.tried ? rules.childPassword(password) : null
 
   async function submit(event) {
@@ -223,8 +191,9 @@ function ResetPassword({ child }) {
     setState({ busy: true })
     try {
       await api.resetChildPassword(child.id, password)
-      setState({ done: password }) // shown once, here, then gone when the parent leaves the page
+      flushSync(() => setState({ done: password })) // shown once, here, then gone when the parent leaves the page
       setPassword('')
+      shown.current?.focus() // Phase 7: the new password, which the button pressed has made way for
     } catch (failure) {
       noticeExpiry(failure)
       const refused = refusedPassword(failure, 'password', password)
@@ -239,12 +208,15 @@ function ResetPassword({ child }) {
         Set a new password if {child.name} has forgotten theirs. The old password stops working straight away.
       </p>
       {state.done ? (
-        <div className="rounded-card border-2 border-navy-800 bg-white p-4" role="status">
+        <div ref={shown} tabIndex={-1} className="rounded-card border-2 border-navy-800 bg-white p-4" role="status">
           <p className="flex items-center gap-2 font-semibold">
             <KeyRound className="size-5" aria-hidden="true" />
             New password for {child.username}: {state.done}
           </p>
           <p className="type-small muted mt-1">Tell {child.name} now. It is not shown again.</p>
+          <div className="mt-3">
+            <CopyButton text={state.done} />
+          </div>
         </div>
       ) : (
         <>
@@ -273,7 +245,7 @@ function ResetPassword({ child }) {
               {state.problem}
             </Message>
           )}
-          <button className="btn btn-secondary justify-self-start" disabled={state.busy}>
+          <button className="btn btn-secondary justify-self-start" {...busyProps(state.busy)}>
             {state.busy ? 'Resetting…' : 'Reset password'}
           </button>
         </>
@@ -284,57 +256,72 @@ function ResetPassword({ child }) {
 
 /** Rule 26, L5: ends the child's sessions on every device. The password stays, so the child signs in again with it. */
 function SignOutEverywhere({ child }) {
-  const dialog = useRef(null)
-  const [state, setState] = useState({})
-
-  async function end() {
-    setState({ busy: true })
-    try {
-      await api.endChildSessions(child.id)
-      dialog.current.close()
-      setState({ done: true })
-    } catch (failure) {
-      noticeExpiry(failure)
-      setState(dialog.current?.open ? { problem: errorText(failure) } : {}) // closed meanwhile: nothing to show it in
-    }
-  }
-
+  const confirm = useRef(null)
+  const [done, setDone] = useState(false)
   return (
     <div className="grid max-w-md gap-4">
       <p className="muted">
         Use this if {child.name} is still signed in on a device they no longer use, or one that is lost. The password stays the same.
       </p>
-      {state.done && (
+      {done && (
         <Message tone="success" role="status">
           {child.name} is signed out everywhere.
         </Message>
       )}
-      <button type="button" className="btn btn-secondary justify-self-start" onClick={() => dialog.current.showModal()}>
+      <button type="button" className="btn btn-secondary justify-self-start" onClick={() => confirm.current.open()}>
         Sign {child.name} out everywhere
       </button>
-
-      <dialog ref={dialog} className="dialog" aria-labelledby="sessions-title" onClose={() => setState((s) => (s.done ? s : {}))}>
-        <h2 id="sessions-title" className="type-subheading">
-          Sign {child.name} out everywhere?
-        </h2>
-        <p className="mt-2">
-          {child.name} is signed out on every phone, tablet and computer, and signs in again with the same username and password.
-        </p>
-        {state.problem && (
-          <Message tone="danger" alert className="mt-4">
-            {state.problem}
-          </Message>
-        )}
-        <div className="mt-6 grid gap-3 sm:flex">
-          <button type="button" className="btn btn-secondary" onClick={() => dialog.current.close()}>
-            Keep {child.name} signed in
-          </button>
-          <button type="button" className="btn btn-primary" disabled={state.busy} onClick={end}>
-            {state.busy ? 'Signing out…' : `Sign ${child.name} out everywhere`}
-          </button>
-        </div>
-      </dialog>
+      <ConfirmDialog
+        ref={confirm}
+        title={`Sign ${child.name} out everywhere?`}
+        keep={`Keep ${child.name} signed in`}
+        confirm={`Sign ${child.name} out everywhere`}
+        busyText="Signing out…"
+        act={async () => {
+          await api.endChildSessions(child.id)
+          confirm.current.close()
+          setDone(true)
+        }}
+      >
+        {child.name} is signed out on every phone, tablet and computer, and signs in again with the same username and password.
+      </ConfirmDialog>
     </div>
+  )
+}
+
+/** K7: whether the child has agreed to the family agreement, and "Ask again", which clears it so Today asks once more. */
+function Agreement({ child, onChange }) {
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState(null)
+  async function again() {
+    setBusy(true)
+    try {
+      await api.askAgreementAgain(child.id)
+      onChange({ ...child, agreedAt: undefined })
+      setResult({ tone: 'success', text: `Today will ask ${child.name} again.` })
+    } catch (error) {
+      setResult({ tone: 'danger', text: errorText(noticeExpiry(error)) })
+    }
+    setBusy(false)
+  }
+  return (
+    <>
+      <p className="max-w-prose">
+        {child.agreedAt ? (
+          <>
+            {child.name} agreed to their repeating tasks and the family’s rewards: <time dateTime={child.agreedAt}>{whenText(child.agreedAt)}</time>.
+          </>
+        ) : (
+          `Not agreed yet. Today shows ${child.name} the agreement while they have a repeating task or the family has a reward.`
+        )}
+      </p>
+      {child.agreedAt && (
+        <button type="button" className="btn btn-secondary mt-4" {...busyProps(busy)} onClick={again}>
+          Ask again
+        </button>
+      )}
+      <Result result={result} />
+    </>
   )
 }
 
@@ -381,7 +368,7 @@ function Remove({ child }) {
           <button type="button" className="btn btn-secondary" onClick={() => dialog.current.close()}>
             Keep {child.name}
           </button>
-          <button type="button" className="btn btn-danger" disabled={state.busy} onClick={remove}>
+          <button type="button" className="btn btn-danger" {...busyProps(state.busy)} onClick={remove}>
             {state.busy ? 'Removing…' : `Remove ${child.name}`}
           </button>
         </div>
@@ -391,40 +378,6 @@ function Remove({ child }) {
 }
 
 /** K7: whether the child has agreed to the family agreement, and "Ask again", which clears it so Today asks once more. */
-function Agreement({ child, onChange }) {
-  const [busy, setBusy] = useState(false)
-  const [result, setResult] = useState(null)
-  async function again() {
-    setBusy(true)
-    try {
-      await api.askAgreementAgain(child.id)
-      onChange({ ...child, agreedAt: undefined })
-      setResult({ tone: 'success', text: `Today will ask ${child.name} again.` })
-    } catch (error) {
-      setResult({ tone: 'danger', text: errorText(noticeExpiry(error)) })
-    }
-    setBusy(false)
-  }
-  return (
-    <>
-      <p className="max-w-prose">
-        {child.agreedAt ? (
-          <>
-            {child.name} agreed to their repeating tasks and the family’s rewards: <time dateTime={child.agreedAt}>{whenText(child.agreedAt)}</time>.
-          </>
-        ) : (
-          `Not agreed yet. Today shows ${child.name} the agreement while they have a repeating task or the family has a reward.`
-        )}
-      </p>
-      {child.agreedAt && (
-        <button type="button" className="btn btn-secondary mt-4" disabled={busy} onClick={again}>
-          Ask again
-        </button>
-      )}
-      <Result result={result} />
-    </>
-  )
-}
 
 function EditChild({ id }) {
   const loaded = useLoad(() => api.getChild(id), [id])

@@ -52,7 +52,7 @@ export function PasswordField({ startVisible = false, ...field }) {
       after={
         <button
           type="button"
-          className="btn btn-text absolute inset-y-0.5 right-0.5 min-h-0 px-3"
+          className="btn btn-text absolute inset-y-0 right-0 min-h-11 px-3"
           aria-label={visible ? 'Hide password' : 'Show password'}
           onClick={() => setVisible((v) => !v)}
         >

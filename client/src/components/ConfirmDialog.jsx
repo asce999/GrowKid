@@ -3,6 +3,7 @@ import { TriangleAlert } from 'lucide-react'
 import { errorText } from '../utils/messages.js'
 import { noticeExpiry } from '../hooks/useLoad.js'
 import { Message } from './states.jsx'
+import { busyProps } from '../utils/forms.js'
 
 /**
  * The confirm step every serious act uses (final plan Phase 5, item 1; DESIGN.md section 18): a native modal dialog, so Escape
@@ -50,7 +51,7 @@ export default function ConfirmDialog({ ref, title, children, keep, confirm, bus
         <button type="button" className="btn btn-secondary" onClick={() => dialog.current.close()}>
           {keep}
         </button>
-        <button type="button" className={`btn ${danger ? 'btn-danger' : 'btn-primary'}`} disabled={state.busy} onClick={run}>
+        <button type="button" className={`btn ${danger ? 'btn-danger' : 'btn-primary'}`} {...busyProps(state.busy)} onClick={run}>
           {state.busy ? busyText : confirm}
         </button>
       </div>

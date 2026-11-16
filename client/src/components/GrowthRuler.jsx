@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Hourglass } from 'lucide-react'
+import { LOCALE } from '../utils/format.js'
 
-const count = (n) => n.toLocaleString('en-IN')
+const count = (n) => n.toLocaleString(LOCALE)
 
 /** How long a part of the reward moment takes: the token, or nothing with reduced motion on. */
 function ms(token) {

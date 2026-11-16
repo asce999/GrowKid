@@ -2,9 +2,11 @@ import { Link } from 'react-router-dom'
 import { KeyRound } from 'lucide-react'
 import * as api from '../api/index.js'
 import Badge from '../components/Badge.jsx'
+import CopyButton from '../components/CopyButton.jsx'
 import { EmptyState, ErrorState, Message, PageLoading } from '../components/states.jsx'
 import { useLoad } from '../hooks/useLoad.js'
 import { useOnce } from '../hooks/useOnce.js'
+import { focusLater } from '../utils/forms.js'
 
 export default function Family() {
   const children = useLoad(api.listChildren)
@@ -28,6 +30,9 @@ export default function Family() {
             <dt className="muted">Password</dt>
             <dd className="font-semibold">{note.added.password}</dd>
           </dl>
+          <div className="mt-3">
+            <CopyButton text={note.added.password} />
+          </div>
           <Message tone="warning" className="mt-4">
             Write these down or tell {note.added.name} now. The password is not shown again. If it is lost, you can
             set a new one from this page.
@@ -43,7 +48,7 @@ export default function Family() {
         </section>
       )}
       {note?.removed && (
-        <Message tone="success" className="mt-6">
+        <Message ref={focusLater} tabIndex={-1} tone="success" role="status" className="mt-6">
           {note.removed} was removed, along with their tasks, proofs and progress.
         </Message>
       )}
