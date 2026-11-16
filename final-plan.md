@@ -6,7 +6,7 @@ How to use it:
 - **You:** open a fresh Claude Code session on Opus 5.5 at high effort for each phase and say "Run the next phase of final-plan.md". Commit when the phase report comes back, then start the next session. Phases 8 and 9 take two sessions each: first a Fable 5.2 session ("Plan phase 8 of final-plan.md"), then the Opus session that builds from its plan. Section 4 says how.
 - **The session:** read section 4 before anything else. It says how a phase runs.
 
-Sizes are rough: **S** is under half a day, **M** is up to two days, **L** is more. Security items carry a severity: **high** puts children's data or the whole app at risk, **medium** weakens a defence that exists, **low** is hardening. Source tags: **audit** is the code audit of 8 November, **new** was found in the re-read of 15 November, **todo #n** is `complete-todo-list.md`.
+Sizes are rough: **S** is under half a day, **M** is up to two days, **L** is more. Security items carry a severity: **high** puts children's data or the whole app at risk, **medium** weakens a defence that exists, **low** is hardening. Source tags: **audit** is the code audit of 8 November, **new** was found in the re-read of 15 November, **todo #n** is an item of the old to-do list (deleted on 16 November 2026; git history keeps it).
 
 Every `file:line` below was true on 8 November. Lines drift as phases land, so grep before editing.
 
