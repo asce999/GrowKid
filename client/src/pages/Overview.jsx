@@ -1,11 +1,15 @@
-import { Link } from 'react-router-dom'
+import { useRef, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { ChevronRight, Circle, CircleCheck } from 'lucide-react'
 import * as api from '../api/index.js'
+import Badge from '../components/Badge.jsx'
 import { EmptyState, ErrorState, Message, PageLoading } from '../components/states.jsx'
 import { CategoryTile, TaskRow } from '../components/Task.jsx'
-import { useLoad } from '../hooks/useLoad.js'
+import { noticeExpiry, useLoad } from '../hooks/useLoad.js'
 import { useOnce } from '../hooks/useOnce.js'
-import { addDays, dayKeyOf, daysBetween, initialOf, weekdayOf, whenText } from '../utils/format.js'
+import { addDays, dayKeyOf, daysBetween, weekdayOf, whenText } from '../utils/format.js'
+import { ideaOf, ideaWords } from '../utils/ideas.js'
+import { errorText } from '../utils/messages.js'
 import { inThisWeek } from '../utils/tasks.js'
 
 // The parent's home. It opens on what needs the parent now: proofs waiting, oldest first, and a
@@ -75,11 +79,72 @@ function LastWeek({ family, tasks, growth }) {
   )
 }
 
+/**
+ * K6: what the children have asked to do. "Make it a task" opens the task form filled from the idea, and saving it answers the
+ * suggestion; "Not now" answers it at once. An idea the app no longer has fills nothing but the child.
+ */
+function Suggestions({ list, onAnswered }) {
+  const navigate = useNavigate()
+  const heading = useRef(null)
+  const [busy, setBusy] = useState(null)
+  const [problem, setProblem] = useState('')
+  if (list.length === 0) return null
+
+  function make(suggestion) {
+    const idea = ideaOf(suggestion.ideaId)
+    const words = idea ?? { category: '', title: '', instructions: '', doneLooksLike: '', points: 20 }
+    const { category, title, instructions, doneLooksLike, points } = words
+    navigate('/parent/tasks/new', { state: { copy: { childId: suggestion.childId, category, title, instructions, doneLooksLike, points }, suggestionId: suggestion.id } })
+  }
+  async function notNow(suggestion) {
+    setBusy(suggestion.id)
+    setProblem('')
+    try {
+      await api.answerSuggestion(suggestion.id, 'declined')
+      heading.current?.focus() // the row and its buttons are gone
+      onAnswered(suggestion.id)
+    } catch (error) {
+      setProblem(errorText(noticeExpiry(error)))
+    }
+    setBusy(null)
+  }
+
+  return (
+    <section className="mt-6 rounded-card border bg-white p-4 sm:p-6" aria-labelledby="suggested">
+      <h2 id="suggested" ref={heading} tabIndex={-1} className="type-subheading">
+        Tasks your children asked for
+      </h2>
+      <ul className="mt-3 grid gap-3">
+        {list.map((suggestion) => (
+          <li key={suggestion.id} className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <span className="min-w-0 flex-1 basis-56 break-words">
+              <span className="font-medium">{suggestion.childName}</span> suggested {ideaWords(suggestion.ideaId)}
+            </span>
+            <button type="button" className="btn btn-secondary" onClick={() => make(suggestion)}>
+              Make it a task
+            </button>
+            <button type="button" className="btn btn-text" disabled={busy === suggestion.id} onClick={() => notNow(suggestion)}>
+              Not now<span className="sr-only">: {ideaWords(suggestion.ideaId)} for {suggestion.childName}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {problem && (
+        <Message tone="danger" alert className="mt-3">
+          {problem}
+        </Message>
+      )}
+    </section>
+  )
+}
+
 export default function Overview() {
   const loaded = useLoad(
     async () => {
-      const [family, tasks, growth, rewards, asked] = await Promise.all([api.listChildren(), api.listTasks(), api.listGrowth(), api.listRewards(), api.listRequests()])
-      return { family, tasks, growth, rewards, asked, requests: asked.filter((r) => r.status === 'requested').length }
+      const [family, tasks, growth, rewards, asked, suggestions] = await Promise.all([
+        api.listChildren(), api.listTasks(), api.listGrowth(), api.listRewards(), api.listRequests(), api.listSuggestions(),
+      ])
+      return { family, tasks, growth, rewards, asked, suggestions, requests: asked.filter((r) => r.status === 'requested').length }
     },
     [],
     { live: true },
@@ -88,7 +153,7 @@ export default function Overview() {
 
   if (loaded.status === 'loading') return <PageLoading rows={3} />
   if (loaded.status === 'error') return <ErrorState error={loaded.error} onRetry={loaded.reload} />
-  const { family, tasks, growth, rewards, asked, requests } = loaded.data
+  const { family, tasks, growth, rewards, asked, suggestions, requests } = loaded.data
   const longWaiting = asked.filter((r) => r.status === 'requested' && api.now() - new Date(r.requestedAt) > 2 * DAY) // H11
   const waiting = tasks.filter((task) => task.status === 'review').sort((a, b) => sentAt(a).localeCompare(sentAt(b)))
   const week = tasks.filter((task) => task.status !== 'review' && inThisWeek(task))
@@ -116,6 +181,7 @@ export default function Overview() {
           </Link>
         </Message>
       ))}
+      <Suggestions list={suggestions} onAnswered={(id) => loaded.set((data) => ({ ...data, suggestions: data.suggestions.filter((s) => s.id !== id) }))} />
       <FirstSteps family={family} tasks={tasks} rewards={rewards} />
       {family.length > 0 && tasks.length > 0 && <LastWeek family={family} tasks={tasks} growth={growth} />}
 
@@ -218,9 +284,7 @@ export default function Overview() {
               {family.map((child) => (
                 <li key={child.id} className="border-b last:border-b-0">
                   <Link to={`/parent/progress/${child.id}`} className="task-row">
-                    <span className="avatar" aria-hidden="true">
-                      {initialOf(child.name)}
-                    </span>
+                    <Badge avatar={child.avatar} name={child.name} />
                     <span className="grid min-w-0 flex-1 gap-0.5">
                       <span className="truncate font-medium">{child.name}</span>
                       {growth[child.id] && (

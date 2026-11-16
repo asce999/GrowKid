@@ -9,7 +9,7 @@
     "build": "vite build",
     "lint": "oxlint",
     "check:size": "node scripts/size-check.js",
-    "check": "node src/utils/tasks.check.js && node src/api/errors.check.js && node src/utils/words.check.js && node src/api/reload.check.js && node src/hooks/pageCache.check.js && node src/utils/format.check.js && node src/utils/ideas.check.js",
+    "check": "node src/utils/tasks.check.js && node src/api/errors.check.js && node src/utils/words.check.js && node src/api/reload.check.js && node src/hooks/pageCache.check.js && node src/utils/format.check.js && node src/utils/ideas.check.js && node src/utils/plant.check.js",
     "preview": "vite preview",
     "e2e": "playwright test"
   },

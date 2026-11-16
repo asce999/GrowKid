@@ -114,7 +114,7 @@ test('getGrowth, listGrowth, listStickers and getProgress: an approval the child
   assert.equal((await kid.api.get('/growth')).body.shown.points, 20)
 
   const list = (await kid.api.get('/stickers')).body
-  assert.equal(list.length, 14)
+  assert.equal(list.length, 20)
   assert.deepEqual([list.find((s) => s.id === 'tasks-10').have, 'earnedAt' in list.find((s) => s.id === 'tasks-10')], [1, false])
 
   const all = (await mom.api.get('/growth/children')).body
@@ -127,7 +127,7 @@ test('getGrowth, listGrowth, listStickers and getProgress: an approval the child
   assert.deepEqual(progress.child, { id: kid.id, name: 'Kid', username: kid.username })
   assert.deepEqual([progress.points, progress.level, progress.weeks.length, progress.streak.days], [20, 1, 6, 1])
   assert.deepEqual(progress.counts, { approved: 1, waiting: 0, open: 0, overdue: 0 })
-  assert.equal(progress.stickers.length, 14)
+  assert.equal(progress.stickers.length, 20)
   assert.equal(progress.stickers.find((s) => s.id === 'tasks-50').taskTitle, 'A task since deleted')
   assert.equal('seen' in progress.stickers[0], false)
   assert.equal(progress.calendar.at(-1).state, 'done')
@@ -462,6 +462,7 @@ const FAMILY_TABLES = (users, tasks, proofs) => ({
   restDay: { childId: { in: users } },
   reward: { parentId: { in: users } },
   rewardRequest: { OR: [{ childId: { in: users } }, { parentId: { in: users } }] },
+  suggestion: { childId: { in: users } }, // K6
 })
 
 test('deleting a family removes every row of theirs and every proof file, keeps unanswered reports with byId null, and deletes answered ones', async () => {
@@ -476,6 +477,7 @@ test('deleting a family removes every row of theirs and every proof file, keeps 
   await mom.api.post(`/children/${diya.id}/rest-days`, { day: dayIn(1), rest: true })
   const cheap = await reward(mom, 'Extra screen time', 10)
   assert.equal((await aarav.api.post('/requests', { rewardId: cheap.id })).status, 201)
+  assert.equal((await diya.api.post('/suggestions', { ideaId: 'chores-1' })).status, 201)
   const report = async (who, details, taskId) => {
     const { id } = (await who.api.post('/reports', { details, taskId })).body
     reportIds.push(id)

@@ -1,18 +1,19 @@
 import { now } from './clock.js'
 import { invalid, refuse, text } from './errors.js'
-import { STICKERS, approvedInWeek, balanceOf, dayKey, progress, questOf, recordOf, score, weekKey } from './scoring.js'
+import { avatarOf } from './shape.js'
+import { KINDS, STICKERS, approvedInWeek, balanceOf, bestWeekOf, dayKey, progress, questOf, recordOf, score, weekKey, weeksOf } from './scoring.js'
 
 /** The rules a handler checks by value, ported from the stand-in removed in B4. The award rules are in scoring.js. */
 
 // Rule 5, proof files: one photo or video of up to 25 MB, or a note with no file (C2: no PDF). The six types are files.js's sniff table.
 export const MAX_FILE_BYTES = 25 * 1024 * 1024
 /** C8: the version of Safety and privacy a consent is given under: the date the page last changed. Privacy.jsx shows the same date. */
-export const PRIVACY_VERSION = '2026-11-15'
-const CATEGORIES = ['chores', 'study', 'reading', 'creative', 'outdoors', 'health']
+export const PRIVACY_VERSION = '2026-11-16'
+export const CATEGORIES = KINDS
 // Rule 20, cheers: the six kinds a parent can approve with.
 export const CHEER_KINDS = ['proud', 'tidy', 'brave', 'clever', 'kind', 'effort']
 // Rule 27, L6: the most one family may hold. tasks counts one child's tasks that are not approved yet.
-const CAPS = { children: 10, tasks: 300, rewards: 50, series: 20 } // series: H1, per child
+const CAPS = { children: 10, tasks: 300, rewards: 50, series: 20, suggestions: 3 } // series: H1, per child; suggestions: K6, waiting, per child
 /** L6: a family's proof files together. This, not the task cap, is what protects the disk. */
 export const STORAGE_BYTES = 2 * 1024 ** 3
 /** L9: the free space a stored proof must leave on the upload folder's drive. */
@@ -24,6 +25,8 @@ export const FREE_BYTES = 2 * 1024 ** 3
 export const cap = (quota, count) => {
   if (count >= CAPS[quota]) refuse('QUOTA', { quota })
 }
+/** K10: the four colours a child's badge can be. */
+export const AVATAR_COLOURS = ['navy', 'sprout', 'sun', 'ember']
 /** The statuses in which a task takes proof (rule 2). */
 export const OPEN = ['todo', 'sentBack']
 // Rule 8 (A8): the stand-in's three words, until the user supplies more.
@@ -170,25 +173,36 @@ function questForChild(quest, award) {
   return { ...quest, target, bonus, done: target, surprise, sealed: false }
 }
 
-/** Growth as a child is given it. */
+/** Growth as a child is given it. K4: with their own six weeks and best week, from the tasks as they have been shown them. */
 export function growthForChild(snapshot, time) {
   const growth = growthOf(snapshot, time)
   const { completed, week } = growth.shown.quest ?? {} // shown only counts the quests the child has seen
   const award = completed ? growth.questAwards.find((a) => a.week === week) : undefined
-  return { ...growth, quest: questForChild(growth.quest, award), shown: { ...growth.shown, quest: questForChild(growth.shown.quest, award) } }
+  const shownTasks = snapshot.tasks.map(notShown)
+  return {
+    ...growth,
+    quest: questForChild(growth.quest, award),
+    shown: { ...growth.shown, quest: questForChild(growth.shown.quest, award) },
+    weeks: weeksOf(shownTasks, time, snapshot.zone),
+    bestWeek: bestWeekOf(shownTasks, snapshot.zone),
+  }
 }
 
 /** The sticker chart for the child (rule 13): earned and seen ones in full, the rest with how far along they are. */
 export function stickerList(snapshot, time) {
   const { zone, tasks, rest, questAwards, awards } = snapshot
   const seenAwards = questAwards.filter((a) => awardSeen(snapshot, a))
-  const record = recordOf(tasks.map(notShown), time, { rest, quests: seenAwards.length, zone })
+  const shownTasks = tasks.map(notShown)
+  const record = recordOf(shownTasks, time, { rest, quests: seenAwards.length, zone })
+  const done = new Set(shownTasks.filter((t) => t.status === 'approved').map((t) => t.category))
   return STICKERS.map((s) => {
     const award = awards[s.id]
     const seen = award && awardSeen(snapshot, award)
     const sticker = award ? { ...s, ...award, seen } : s
-    // a sticker not yet earned, or not yet seen, shows how far along it is
-    return seen ? sticker : { ...sticker, have: Math.min(s.need, record[s.measure]) }
+    if (seen) return sticker
+    // a sticker not yet earned, or not yet seen, shows how far along it is; K1: the kinds sticker names the kinds still missing
+    const withProgress = { ...sticker, have: Math.min(s.need, record[s.measure]) }
+    return s.measure === 'kinds' ? { ...withProgress, missing: CATEGORIES.filter((c) => !done.has(c)) } : withProgress
   })
 }
 
@@ -216,7 +230,7 @@ export function progressOf({ zone, tasks, rest, awards }, child, time) {
 export const leaderboardOf = (entries, meId, time) =>
   entries
     .map(({ child, snapshot: { zone, tasks } }) => ({
-      name: child.name, tasks: approvedInWeek(tasks.map(notShown), weekKey(time, zone), zone), you: child.id === meId,
+      name: child.name, ...(child.avatar && { avatar: avatarOf(child.avatar) }), tasks: approvedInWeek(tasks.map(notShown), weekKey(time, zone), zone), you: child.id === meId,
     }))
     .sort((a, b) => b.tasks - a.tasks || a.name.localeCompare(b.name))
 

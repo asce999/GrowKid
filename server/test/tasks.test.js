@@ -523,7 +523,7 @@ test('markResultsSeen: the child\'s own listed tasks only; countNewResults and c
   refused(await mom.api.post('/tasks/seen', { taskIds: [] }), 403, 'NOT_ALLOWED')
   refused(await as(server.base).post('/tasks/seen', { taskIds: [] }), 401, 'NOT_SIGNED_IN')
   assert.deepEqual((await mom.api.get('/counts')).body, { proofs: 0, requests: 0 }) // P3: a parent's shape
-  assert.deepEqual(Object.keys((await kid.api.get('/counts')).body), ['results']) // and a child's
+  assert.deepEqual(Object.keys((await kid.api.get('/counts')).body), ['results', 'answers']) // and a child's (K2: answers too)
   refused(await moderator.get('/counts'), 403, 'NOT_ALLOWED')
   refused(await as(server.base).get('/counts'), 401, 'NOT_SIGNED_IN')
   for (const old of ['/counts/proofs', '/counts/results', '/counts/requests']) refused(await mom.api.get(old), 404, 'NOT_FOUND') // gone

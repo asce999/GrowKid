@@ -49,56 +49,68 @@ enum RequestStatus {
   declined
 }
 
+enum SuggestionStatus {
+  open
+  accepted
+  declined
+}
+
 /// A parent, a child or a moderator. A child belongs to one parent (D1).
 model User {
-  id           String   @id @default(uuid())
-  role         Role
-  name         String
-  email        String?  @unique // parents and moderators, lower-cased
-  country      String?  // a parent's two-letter country code (S11); a child's day follows its parent's
-  username     String?  @unique // children
-  passwordHash String
-  tokenVersion Int      @default(0) // raised to sign every device out
-  leaderboard  Boolean  @default(false) // a parent's setting (rule 23)
+  id             String          @id @default(uuid())
+  role           Role
+  name           String
+  email          String?         @unique // parents and moderators, lower-cased
+  country        String? // a parent's two-letter country code (S11); a child's day follows its parent's
+  username       String?         @unique // children
+  passwordHash   String
+  tokenVersion   Int             @default(0) // raised to sign every device out
+  leaderboard    Boolean         @default(false) // a parent's setting (rule 23)
   pausedAt       DateTime? // C6: set on the whole family by scripts/pause-family.js; a paused user cannot sign in
   consentAt      DateTime? // C8: when the parent ticked consent, for themselves at sign-up and for this child when adding them
-  consentVersion String?   // C8: rules.js PRIVACY_VERSION at that moment, the date Safety and privacy last changed
-  parentId     String?
-  parent       User?    @relation("Family", fields: [parentId], references: [id], onDelete: Cascade)
-  children     User[]   @relation("Family")
-  tasks        Task[]
-  awards       Award[]
-  quest        Quest?
-  questAwards  QuestAward[]
-  restDays     RestDay[]
-  series       TaskSeries[]
-  rewards      Reward[]
-  requestsMade RewardRequest[] @relation("RequestChild")
-  requestsHeld RewardRequest[] @relation("RequestParent")
-  reports      Report[]
-  createdAt    DateTime @default(now())
+  consentVersion String? // C8: rules.js PRIVACY_VERSION at that moment, the date Safety and privacy last changed
+  goalRewardId   String? // K3: a child's savings goal; cleared by the database when the reward is deleted
+  goalReward     Reward?         @relation("Goal", fields: [goalRewardId], references: [id], onDelete: SetNull)
+  agreedAt       DateTime? // K7: when the child agreed to the family agreement; a parent's "Ask again" clears it
+  avatar         String? // K10: a child's badge, "<colour>:<stickerId>", both from fixed lists
+  sound          Boolean         @default(true) // K11: tones and vibration in the reward moment
+  parentId       String?
+  parent         User?           @relation("Family", fields: [parentId], references: [id], onDelete: Cascade)
+  children       User[]          @relation("Family")
+  tasks          Task[]
+  awards         Award[]
+  quest          Quest?
+  questAwards    QuestAward[]
+  restDays       RestDay[]
+  series         TaskSeries[]
+  rewards        Reward[]        @relation("FamilyRewards")
+  suggestions    Suggestion[]
+  requestsMade   RewardRequest[] @relation("RequestChild")
+  requestsHeld   RewardRequest[] @relation("RequestParent")
+  reports        Report[]
+  createdAt      DateTime        @default(now())
 
   @@index([parentId])
 }
 
 model Task {
-  id           String     @id @default(uuid())
-  childId      String
-  child        User       @relation(fields: [childId], references: [id], onDelete: Cascade)
-  category     Category
-  title        String
-  instructions String
-  dueAt        DateTime
-  points       Int
-  status       TaskStatus @default(todo)
-  resultSeen   Boolean    @default(true)
-  pinned       Boolean    @default(false) // the child's chosen next task (rule 22)
-  createdAt    DateTime   // always set from clock.now(), never by the database
-  doneLooksLike String    @default("") // H5: what finished looks like, up to 200 characters, screened
-  seriesId     String?    // H2: the series that made it; cleared when the series is stopped
-  series       TaskSeries? @relation(fields: [seriesId], references: [id], onDelete: SetNull)
-  seriesDay    String?    // H2: the family's day it was made for, 'YYYY-MM-DD'
-  proofs       Proof[]
+  id            String      @id @default(uuid())
+  childId       String
+  child         User        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  category      Category
+  title         String
+  instructions  String
+  dueAt         DateTime
+  points        Int
+  status        TaskStatus  @default(todo)
+  resultSeen    Boolean     @default(true)
+  pinned        Boolean     @default(false) // the child's chosen next task (rule 22)
+  createdAt     DateTime // always set from clock.now(), never by the database
+  doneLooksLike String      @default("") // H5: what finished looks like, up to 200 characters, screened
+  seriesId      String? // H2: the series that made it; cleared when the series is stopped
+  series        TaskSeries? @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+  seriesDay     String? // H2: the family's day it was made for, 'YYYY-MM-DD'
+  proofs        Proof[]
 
   @@unique([seriesId, seriesDay]) // H2: one task per series per day, however many loads race
   @@index([childId, status]) // P4: the cap, the counts and the window ask by child and status; it serves childId alone too
@@ -114,8 +126,8 @@ model TaskSeries {
   instructions  String
   doneLooksLike String   @default("")
   points        Int
-  weekdays      Int      // 7 bits, Monday = 1, Tuesday = 2, ... Sunday = 64
-  dueTime       String   // 'HH:MM' on the family's clock
+  weekdays      Int // 7 bits, Monday = 1, Tuesday = 2, ... Sunday = 64
+  dueTime       String // 'HH:MM' on the family's clock
   active        Boolean  @default(true)
   createdAt     DateTime
   tasks         Task[]
@@ -130,7 +142,7 @@ model Proof {
   task       Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
   note       String        @default("")
   fileName   String?
-  fileType   String?       // decided from the file's bytes
+  fileType   String? // decided from the file's bytes
   fileSize   Int?
   sentAt     DateTime
   late       Boolean
@@ -150,7 +162,7 @@ model Award {
   child     User     @relation(fields: [childId], references: [id], onDelete: Cascade)
   stickerId String
   earnedAt  DateTime
-  taskId    String   // no relation: the award outlives whatever happens to the task
+  taskId    String // no relation: the award outlives whatever happens to the task
   taskTitle String
 
   @@id([childId, stickerId])
@@ -168,7 +180,7 @@ model Quest {
 model QuestAward {
   childId   String
   child     User     @relation(fields: [childId], references: [id], onDelete: Cascade)
-  week      String   // its Monday, 'YYYY-MM-DD'
+  week      String // its Monday, 'YYYY-MM-DD'
   target    Int
   bonus     Int
   surprise  String?
@@ -190,10 +202,11 @@ model RestDay {
 model Reward {
   id        String   @id @default(uuid())
   parentId  String
-  parent    User     @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  parent    User     @relation("FamilyRewards", fields: [parentId], references: [id], onDelete: Cascade)
   title     String
   cost      Int
   createdAt DateTime
+  goalOf    User[]   @relation("Goal")
 
   @@index([parentId])
 }
@@ -204,7 +217,7 @@ model RewardRequest {
   child       User          @relation("RequestChild", fields: [childId], references: [id], onDelete: Cascade)
   parentId    String
   parent      User          @relation("RequestParent", fields: [parentId], references: [id], onDelete: Cascade)
-  rewardId    String        // no relation: it may name a reward since deleted
+  rewardId    String // no relation: it may name a reward since deleted
   title       String
   cost        Int
   status      RequestStatus @default(requested)
@@ -212,9 +225,22 @@ model RewardRequest {
   requestedAt DateTime
   answeredBy  String?
   answeredAt  DateTime?
+  answerSeen  Boolean       @default(true) // K2: false from the answer until Today has shown it to the child
 
   @@index([childId])
   @@index([parentId, status]) // P4: requests waiting, by parent; it serves parentId alone too
+}
+
+/// K6: a child's suggestion of one of the client's task ideas, by its id. No free text.
+model Suggestion {
+  id        String           @id @default(uuid())
+  childId   String
+  child     User             @relation(fields: [childId], references: [id], onDelete: Cascade)
+  ideaId    String // matches ^[a-z0-9-]{1,40}$
+  status    SuggestionStatus @default(open)
+  createdAt DateTime
+
+  @@index([childId, status])
 }
 
 /// Rule 15. byId is cleared when the sender is deleted, so a kept report holds no id of theirs (rule 16).
@@ -225,7 +251,7 @@ model Report {
   from           Role
   details        String
   sentAt         DateTime
-  item           Json?     // itemOf(): words only, no ids
+  item           Json? // itemOf(): words only, no ids
   resolutionNote String?
   resolvedAt     DateTime?
 

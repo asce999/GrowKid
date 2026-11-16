@@ -27,6 +27,8 @@ export const useSession = create((set) => ({
       set({ loadFailed: true })
     }
   },
+  /** K10, K11: the signed-in child's own account as the server answered a change to it. */
+  setUser: (user) => set({ user }),
   signIn: async (details) => set({ user: await api.signIn(details), ended: null }),
   signUp: async (details) => set({ user: await api.signUp(details), ended: null }),
   signOut: async () => {

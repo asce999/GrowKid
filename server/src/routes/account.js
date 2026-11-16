@@ -3,10 +3,10 @@ import { Router } from 'express'
 import { childAccountLimit, clear, findAccount, hash, issue, matches, only, ownChild, passwordLimit, paused, securityLog, signInAccountLimit, signInIpLimit, signInLimit, signUpLimit } from '../auth.js'
 import { now } from '../clock.js'
 import { listCountries, zoneOf } from '../countries.js'
-import { db } from '../db.js'
+import { db, readChildren } from '../db.js'
 import { invalid, refuse, text } from '../errors.js'
 import { removeFiles } from '../files.js'
-import { PRIVACY_VERSION, cap } from '../rules.js'
+import { AVATAR_COLOURS, PRIVACY_VERSION, cap, stickerList } from '../rules.js'
 import { asChild, asUser } from '../shape.js'
 
 /** Accounts and the family (plan B1): sessions, sign-up, the parent's own settings and password, and the children. Ported from the stand-in removed in B4. */
@@ -117,6 +117,32 @@ account.put('/me/password', passwordLimit, async (req, res) => {
   if (count === 0) refuse('NOT_SIGNED_IN')
   issue(res, { id: me.id, tokenVersion: me.tokenVersion + 1 })
   res.status(204).end()
+})
+
+// ------------------------------------------------------------------ the child's own settings (K10, K11)
+
+const withParent = { parent: { select: { country: true } } } // asUser reads the family's zone from it
+
+/** setAvatar (K10): one of four colours and a sticker the child has earned and seen, or both null for none. */
+account.put('/me/avatar', async (req, res) => {
+  const me = only(req, 'child')
+  const { colour, stickerId } = req.body ?? {}
+  let avatar = null
+  if (colour !== null || stickerId !== null) {
+    const [snapshot] = await readChildren([me.id])
+    const earned = stickerList(snapshot, now()).some((s) => s.id === stickerId && s.seen)
+    invalid({ colour: !AVATAR_COLOURS.includes(colour) && 'required', stickerId: !earned && 'required' })
+    avatar = `${colour}:${stickerId}`
+  }
+  res.json(asUser(await db.user.update({ where: { id: me.id }, data: { avatar }, include: withParent })))
+})
+
+/** setSound (K11): whether the reward moment may play its tones and vibration. */
+account.put('/me/sound', async (req, res) => {
+  const me = only(req, 'child')
+  const { sound } = req.body ?? {}
+  if (typeof sound !== 'boolean') refuse('INVALID', { sound: 'required' })
+  res.json(asUser(await db.user.update({ where: { id: me.id }, data: { sound }, include: withParent })))
 })
 
 /** endOtherSessions (rule 26, L5): every other device is signed out, and this one gets a fresh cookie. Conditional, as changePassword is. */

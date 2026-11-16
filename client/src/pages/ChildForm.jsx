@@ -4,8 +4,9 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { KeyRound, TriangleAlert } from 'lucide-react'
 import * as api from '../api/index.js'
 import { Field, PasswordField, Requirement } from '../components/Field.jsx'
-import { ErrorState, Message, PageLoading } from '../components/states.jsx'
+import { ErrorState, Message, PageLoading, Result } from '../components/states.jsx'
 import { noticeExpiry, useLoad } from '../hooks/useLoad.js'
+import { whenText } from '../utils/format.js'
 import { focusFirstInvalid, refusedPassword, submitProblem } from '../utils/forms.js'
 import { errorText } from '../utils/messages.js'
 import { asUsername, rules } from '../utils/rules.js'
@@ -389,6 +390,42 @@ function Remove({ child }) {
   )
 }
 
+/** K7: whether the child has agreed to the family agreement, and "Ask again", which clears it so Today asks once more. */
+function Agreement({ child, onChange }) {
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState(null)
+  async function again() {
+    setBusy(true)
+    try {
+      await api.askAgreementAgain(child.id)
+      onChange({ ...child, agreedAt: undefined })
+      setResult({ tone: 'success', text: `Today will ask ${child.name} again.` })
+    } catch (error) {
+      setResult({ tone: 'danger', text: errorText(noticeExpiry(error)) })
+    }
+    setBusy(false)
+  }
+  return (
+    <>
+      <p className="max-w-prose">
+        {child.agreedAt ? (
+          <>
+            {child.name} agreed to their repeating tasks and the family’s rewards: <time dateTime={child.agreedAt}>{whenText(child.agreedAt)}</time>.
+          </>
+        ) : (
+          `Not agreed yet. Today shows ${child.name} the agreement while they have a repeating task or the family has a reward.`
+        )}
+      </p>
+      {child.agreedAt && (
+        <button type="button" className="btn btn-secondary mt-4" disabled={busy} onClick={again}>
+          Ask again
+        </button>
+      )}
+      <Result result={result} />
+    </>
+  )
+}
+
 function EditChild({ id }) {
   const loaded = useLoad(() => api.getChild(id), [id])
   const [renamed, setRenamed] = useState(null)
@@ -430,6 +467,12 @@ function EditChild({ id }) {
           Signed-in devices
         </h2>
         <SignOutEverywhere child={child} />
+      </section>
+      <section className="mt-8 border-t pt-6" aria-labelledby="agreement-section-title">
+        <h2 id="agreement-section-title" className="type-subheading mb-4">
+          Agreement
+        </h2>
+        <Agreement child={child} onChange={setRenamed} />
       </section>
       <section className="mt-8 border-t pt-6" aria-labelledby="remove-section-title">
         <h2 id="remove-section-title" className="type-subheading mb-4">

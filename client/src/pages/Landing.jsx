@@ -10,7 +10,7 @@ import Streak from '../components/Streak.jsx'
 import { TaskCard } from '../components/Task.jsx'
 import { useOnce } from '../hooks/useOnce.js'
 import { useSession } from '../store/session.js'
-import { STICKER_ICONS } from '../utils/stickers.js'
+import { iconOf } from '../utils/stickers.js'
 
 // The landing page. Its pictures are the app's own pieces with made-up numbers, nothing animates
 // (the reward moment stays inside the app), and it says only what is true of the app today.
@@ -19,7 +19,7 @@ import { STICKER_ICONS } from '../utils/stickers.js'
 // ------------------------------------------------------------------ 1. the opening
 
 // ponytail: these four are copied from the sticker chart (server/src/scoring.js), which pages may not
-// import, and so are "3 of 14" and "Fourteen to collect" below. server/test/scoring.test.js asserts there are 14;
+// import, and so are "3 of 20" and "Twenty to collect" below. server/test/scoring.test.js asserts there are 20;
 // if a name, a shape or the count changes there, change it here.
 const EXAMPLE_STICKERS = [
   { name: 'First task', shape: 'seal', tone: 'sun', tilt: -6 },
@@ -42,10 +42,10 @@ function ExampleBand() {
         <div className="mt-6">
           <Streak streak={{ days: 5, best: 5, week }} />
         </div>
-        <ul className="mt-6 grid grid-cols-4 gap-2" aria-label="Stickers: 3 of 14 earned">
+        <ul className="mt-6 grid grid-cols-4 gap-2" aria-label="Stickers: 3 of 20 earned">
           {EXAMPLE_STICKERS.map(({ name, slot, ...look }) => (
             <li key={name} className="grid justify-items-center gap-2 text-center">
-              <Sticker icon={STICKER_ICONS[look.shape]} slot={slot} className="size-14" {...look} />
+              <Sticker icon={iconOf(look)} slot={slot} className="size-14" {...look} />
               <span className="type-small font-medium">
                 {name}
                 {slot && <span className="sr-only">, not earned yet</span>}
@@ -197,7 +197,7 @@ const FOR_CHILDREN = [
   ['One next task', 'Your home page opens on what to do next, and what it is worth.'],
   ['XP and levels', 'Every approved task fills your ruler. Every 100 XP is a new level.'],
   ['A streak', 'Send proof on the days a task is due, and your streak grows. Today reminds you once, and never anywhere else.'],
-  ['Stickers', 'Fourteen to collect. You earn each one once, and you keep it for good.'],
+  ['Stickers', 'Twenty to collect. You earn each one once, and you keep it for good.'],
   ['Rewards and quests', 'Spend points on rewards your parent sets, and finish a weekly quest for bonus points.'],
 ]
 

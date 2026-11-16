@@ -137,15 +137,19 @@ function Form({ family, task, latest }) {
       event,
       errors,
       async () => {
+        // K6: a task made from a child's suggestion answers it; one answered meanwhile (REVIEWED) changes nothing
+        const answered = () => location.state?.suggestionId && api.answerSuggestion(location.state.suggestionId, 'accepted').catch(() => {})
         if (repeats) {
           const weekdays = values.repeat === 'daily' ? 127 : values.days
           await api.createSeries({ childId, category, title, instructions, doneLooksLike, points, weekdays, dueTime: values.time })
+          await answered()
           navigate(back, { state: { created: { title: title.trim(), childName: who, repeats: repeatText(weekdays) } } })
         } else if (task) {
           await api.updateTask(task.id, details)
           navigate(back, { state: { saved: true } })
         } else {
           const made = await api.createTask(details)
+          await answered()
           navigate(back, { state: { created: { title: made.title, childName: made.childName } } })
         }
       },

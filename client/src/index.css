@@ -377,6 +377,19 @@
   .avatar {
     @apply grid size-10 shrink-0 place-items-center rounded-full bg-navy-100 font-semibold text-navy-800;
   }
+  /* K10: a child's badge, one of four colours, each with an icon colour that keeps 3:1 or more. */
+  .avatar.badge-navy {
+    @apply bg-navy-800 text-white;
+  }
+  .avatar.badge-sprout {
+    @apply bg-sprout-800 text-white;
+  }
+  .avatar.badge-sun {
+    @apply bg-sun-300 text-navy-950;
+  }
+  .avatar.badge-ember {
+    @apply bg-ember-800 text-white;
+  }
 
   /* Anything not yet earned or not yet added. */
   .not-yet {
@@ -896,6 +909,15 @@
   }
   .land {
     animation: land var(--duration-reward) var(--ease-land) both;
+  }
+  /* K9: the plant's last stage giving way to the new one in the reward moment; opacity only, gone at once with reduced motion. */
+  .fade-out {
+    animation: fade-out var(--duration-reward) var(--ease-out) both;
+  }
+  @keyframes fade-out {
+    to {
+      opacity: 0;
+    }
   }
 
   /* The streak's day marks: gold for a day that counted, dashed for one that changed nothing, grey for one missed, and an outline for a rest day a parent set (never missed). */

@@ -3,16 +3,19 @@ import { flushSync } from 'react-dom'
 import { Link, useParams } from 'react-router-dom'
 import { ChartNoAxesColumn, Flame, Printer, Sticker as StickerIcon } from 'lucide-react'
 import * as api from '../api/index.js'
+import Badge from '../components/Badge.jsx'
 import { Field } from '../components/Field.jsx'
 import GrowthRuler from '../components/GrowthRuler.jsx'
+import Weeks from '../components/Weeks.jsx'
 import { EmptyState, ErrorState, Message, PageLoading } from '../components/states.jsx'
 import Sticker from '../components/Sticker.jsx'
 import { Points } from '../components/Task.jsx'
 import { noticeExpiry, useLoad } from '../hooks/useLoad.js'
 import { useSession } from '../store/session.js'
-import { DAY_SAID, addDays, dateOfKey, dayKeyOf, dayLabel, initialOf } from '../utils/format.js'
+import { DAY_SAID, addDays, dateOfKey, dayKeyOf, dayLabel, daysBetween, weekdayOf, whenText } from '../utils/format.js'
 import { errorText } from '../utils/messages.js'
-import { STICKER_ICONS, tiltOf } from '../utils/stickers.js'
+import { iconOf, tiltOf } from '../utils/stickers.js'
+import { inThisWeek } from '../utils/tasks.js'
 import NotFound from './NotFound.jsx'
 
 // One child's progress, for their parent: the parent's one page of charts (DESIGN.md section
@@ -28,49 +31,6 @@ const fullDate = new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'long
 const letter = dayLabel({ weekday: 'narrow' })
 const tasksText = (n) => (n === 1 ? '1 task' : `${n} tasks`)
 const daysText = (n) => (n === 1 ? '1 day' : `${n} days`)
-
-/** Tasks approved in each of the last six weeks. Every bar carries its number, so nothing rests on colour. */
-function Weeks({ weeks, name }) {
-  const most = Math.max(1, ...weeks.map((week) => week.tasks))
-  const total = weeks.reduce((n, week) => n + week.tasks, 0)
-  const best = weeks.reduce((a, b) => (b.tasks > a.tasks ? b : a))
-  return (
-    <section aria-labelledby="weeks-title">
-      <h2 id="weeks-title" className="type-subheading">
-        Tasks approved each week
-      </h2>
-      <p className="muted mt-1 max-w-prose">
-        {total === 0
-          ? `No task of ${name}’s was approved in the last six weeks.`
-          : `${tasksText(total)} approved in the last six weeks. The most in one week was ${best.tasks}, in the week of ${dayMonth.format(new Date(best.start))}.`}
-      </p>
-      <ol className="bars mt-6">
-        {weeks.map((week, i) => (
-          <li key={week.start}>
-            <span className="bar-well" aria-hidden="true">
-              <span className={`type-data ${week.tasks === 0 ? 'muted' : ''}`}>{week.tasks}</span>
-              <span className="bar" style={{ '--part': week.tasks / most }} />
-            </span>
-            <span className="type-small mt-2 block font-medium" aria-hidden="true">
-              {/* narrow on a phone, so every label breaks into two short lines alike */}
-              <span className="max-sm:mx-auto max-sm:block max-sm:w-10">{i === weeks.length - 1 ? 'This week' : dayMonth.format(new Date(week.start))}</span>
-            </span>
-            <span className="type-small muted block tabular-nums" aria-hidden="true">
-              {week.xp} XP
-            </span>
-            <span className="sr-only">
-              Week of {dayMonth.format(new Date(week.start))}: {tasksText(week.tasks)} approved, {week.xp} XP earned.
-            </span>
-          </li>
-        ))}
-      </ol>
-      <p className="type-small muted mt-3 max-w-prose">
-        Each bar is one week, Monday to Sunday, named by its Monday. A task is counted in the week {name} sent the
-        proof that was approved.
-      </p>
-    </section>
-  )
-}
 
 /** The day a number of days from today falls on, as 'YYYY-MM-DD'. */
 const dayIn = (n) => addDays(dayKeyOf(api.now()), n) // P13: in the family's zone
@@ -236,7 +196,7 @@ function StickerChart({ stickers, name }) {
         {stickers.map((sticker, i) => (
           <li key={sticker.id} className="grid justify-items-center gap-1 text-center">
             <Sticker
-              icon={STICKER_ICONS[sticker.shape]}
+              icon={iconOf(sticker)}
               shape={sticker.shape}
               tone={sticker.tone}
               tilt={tiltOf(i)}
@@ -260,11 +220,100 @@ const MEASURES = [
   { id: 'stickers', label: 'Stickers', Icon: StickerIcon },
 ]
 
+// K12: questions for a family to talk over at the weekend. Three a week, taken in turn, so nothing needs storing.
+const QUESTIONS = [
+  'Which task are you proudest of this week?',
+  'What was hardest this week, and what helped?',
+  'Which task would you swap for a new one?',
+  'What should we try together next week?',
+  'Who helped you this week, and how?',
+  'What did you learn that surprised you?',
+  'Which reward are you saving for, and why?',
+  'What would make next week easier?',
+  'What did you do this week without being asked?',
+]
+
+/** K12: from Friday to Sunday, three questions for the family's weekly check-in. Nothing is stored. */
+function CheckIn({ name }) {
+  const today = dayKeyOf(api.now())
+  if (weekdayOf(today) < 4) return null // Friday is 4
+  const week = Math.floor(daysBetween('2026-01-05', addDays(today, -weekdayOf(today))) / 7) // weeks since a Monday
+  const asked = [0, 1, 2].map((i) => QUESTIONS[(week * 3 + i) % QUESTIONS.length])
+  return (
+    <section className="card mt-6 max-w-2xl print:hidden" aria-labelledby="check-in-title">
+      <h2 id="check-in-title" className="type-subheading">
+        This week’s family check-in
+      </h2>
+      <p className="mt-1">A few minutes together at the weekend. Ask {name}:</p>
+      <ol className="mt-3 grid list-decimal gap-1 pl-6">
+        {asked.map((question) => (
+          <li key={question}>{question}</li>
+        ))}
+      </ol>
+    </section>
+  )
+}
+
+/** K12: the fridge chart: this week's tasks with a box to tick, and the stickers earned. Printed instead of the report. */
+function FridgeChart({ child, tasks, stickers }) {
+  const earned = stickers.filter((sticker) => sticker.earnedAt)
+  return (
+    <section className="hidden print:block">
+      <p className="font-display text-navy-800">GrowKid</p>
+      <h1>{child.name}’s week</h1>
+      <p className="muted mt-1">Tick each task when it is done.</p>
+      {tasks.length === 0 ? (
+        <p className="mt-6">No tasks are due this week.</p>
+      ) : (
+        <ul className="mt-6 grid gap-3">
+          {tasks.map((task) => (
+            <li key={task.id} className="flex break-inside-avoid items-center gap-4 border-b pb-3">
+              <span className="size-8 shrink-0 rounded-tag border-2 border-navy-800" aria-hidden="true" />
+              <span className="min-w-0 flex-1">
+                <span className="block font-medium">{task.title}</span>
+                <span className="type-small muted block">Due {whenText(task.dueAt)}</span>
+              </span>
+              <Points value={task.points} short />
+            </li>
+          ))}
+        </ul>
+      )}
+      {earned.length > 0 && (
+        <>
+          <h2 className="type-subheading mt-8">Stickers earned</h2>
+          <ul className="mt-3 flex flex-wrap gap-4">
+            {earned.map((sticker) => (
+              <li key={sticker.id} className="grid w-20 justify-items-center gap-1 text-center">
+                <Sticker icon={iconOf(sticker)} shape={sticker.shape} tone={sticker.tone} className="size-12" />
+                <span className="type-small">{sticker.name}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
+  )
+}
+
 function ChildProgress({ id }) {
   const parent = useSession((s) => s.user)
   const loaded = useLoad(() => Promise.all([api.getProgress(id), api.listChildren()]), [id])
   const [measure, setMeasure] = useState('weeks')
-  const [report, setReport] = useState({}) // { status: 'preparing' | 'failed', error }
+  const [report, setReport] = useState({}) // { status: 'preparing' | 'failed', error, what }
+  const [fridge, setFridge] = useState(null) // K12: this week's tasks, only while the fridge chart prints
+
+  // K12: the fridge chart prints in place of the report, then the page is as it was
+  async function printFridge() {
+    setReport({})
+    try {
+      const tasks = (await api.listTasks()).filter((task) => task.childId === id && inThisWeek(task))
+      flushSync(() => setFridge(tasks))
+      window.print()
+    } catch (error) {
+      setReport({ status: 'failed', error: noticeExpiry(error), what: 'fridge chart' })
+    }
+    setFridge(null)
+  }
 
   // The report is this page, printed. It is prepared first: the figures are asked for again, so
   // that what is printed is true at that moment.
@@ -302,6 +351,8 @@ function ChildProgress({ id }) {
 
   return (
     <>
+      {fridge && <FridgeChart child={child} tasks={fridge} stickers={progress.stickers} />}
+      <div className={fridge ? 'print:hidden' : undefined}>
       <title>{`${child.name}’s progress – GrowKid`}</title>
       <p className="hidden font-display text-navy-800 print:block">GrowKid progress report</p>
       <h1>
@@ -316,9 +367,7 @@ function ChildProgress({ id }) {
         <nav aria-label="Child" className="mt-4 flex flex-wrap gap-2 print:hidden">
           {family.map((one) => (
             <Link key={one.id} to={`/parent/progress/${one.id}`} className="btn btn-secondary btn-switch" aria-current={one.id === child.id ? 'page' : undefined}>
-              <span className="avatar size-7" aria-hidden="true">
-                {initialOf(one.name)}
-              </span>
+              <Badge avatar={one.avatar} name={one.name} className="size-7" />
               {one.name}
             </Link>
           ))}
@@ -339,6 +388,8 @@ function ChildProgress({ id }) {
           {counts.overdue > 0 && `, ${counts.overdue} of them overdue`}.
         </p>
       </section>
+
+      <CheckIn name={child.name} />
 
       {counts.approved === 0 ? (
         <div className="mt-8 max-w-2xl">
@@ -370,7 +421,7 @@ function ChildProgress({ id }) {
 
           <div className="mt-6 grid items-start gap-x-12 gap-y-10 lg:mt-10 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] print:mt-8 print:block print:space-y-8">
             <div className={`break-inside-avoid ${only('weeks')}`}>
-              <Weeks weeks={progress.weeks} name={child.name} />
+              <Weeks weeks={progress.weeks} who={child.name} whose={`${child.name}’s`} />
             </div>
             <div className={`break-inside-avoid ${only('streak')}`}>
               <Calendar streak={streak} calendar={progress.calendar} child={child} onChange={refreshProgress} />
@@ -386,6 +437,9 @@ function ChildProgress({ id }) {
                 <Printer className="size-5 shrink-0" aria-hidden="true" />
                 {report.status === 'preparing' ? 'Preparing the report…' : 'Download report'}
               </button>
+              <button type="button" className="btn btn-secondary" onClick={printFridge}>
+                Print a fridge chart
+              </button>
               <p className="type-small muted min-w-0 flex-1 basis-56">
                 Opens your browser’s print window. Choose “Save as PDF” there to keep a copy.
               </p>
@@ -395,7 +449,7 @@ function ChildProgress({ id }) {
             )}
             {report.status === 'failed' && (
               <Message tone="danger" alert>
-                The report could not be prepared. {errorText(report.error)}
+                The {report.what ?? 'report'} could not be prepared. {errorText(report.error)}
               </Message>
             )}
             <p className="type-small muted">
@@ -404,6 +458,7 @@ function ChildProgress({ id }) {
           </div>
         </>
       )}
+      </div>
     </>
   )
 }

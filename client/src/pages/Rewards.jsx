@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { flushSync } from 'react-dom'
+import { Target } from 'lucide-react'
 import * as api from '../api/index.js'
 import { RequestLine, RequestTag } from '../components/Request.jsx'
+import AskForTask from '../components/Suggest.jsx'
 import { EmptyState, ErrorState, PageLoading, Result } from '../components/states.jsx'
 import { Points } from '../components/Task.jsx'
 import { noticeExpiry, useLoad } from '../hooks/useLoad.js'
@@ -26,13 +28,28 @@ export default function Rewards() {
   if (loaded.status === 'error') return <ErrorState error={loaded.error} onRetry={loaded.reload} />
   const [growth, rewards, requests] = loaded.data
   const balance = growth.shown.balance
+  const goal = growth.goal // K3
+
+  async function choose(rewardId) {
+    setBusy(true)
+    try {
+      const { goal: chosen } = await api.setGoal(rewardId)
+      loaded.set(([g, list, all]) => [{ ...g, goal: chosen }, list, all])
+      setResult({ tone: 'success', text: chosen ? `Saving for ${chosen.title}. Today shows how far you have got.` : 'You are not saving for anything now.' })
+    } catch (error) {
+      setResult({ tone: 'danger', text: errorText(noticeExpiry(error)) })
+      await refresh()
+    }
+    setBusy(false)
+  }
 
   async function ask(reward) {
     setBusy(true)
     try {
       const asked = await api.requestReward(reward.id)
       // P12: the request in place, and its points held from the balance on screen, as the server holds them
-      loaded.set(([g, list, all]) => [{ ...g, shown: { ...g.shown, balance: g.shown.balance - asked.cost } }, list, [asked, ...all]])
+      // K3: asking for the goal ends it, as the server does
+      loaded.set(([g, list, all]) => [{ ...g, goal: g.goal?.id === reward.id ? null : g.goal, shown: { ...g.shown, balance: g.shown.balance - asked.cost } }, list, [asked, ...all]])
       setResult({ tone: 'success', text: 'Asked. A parent will answer soon.' })
     } catch (error) {
       setResult({ tone: 'danger', text: errorText(noticeExpiry(error)) })
@@ -81,7 +98,15 @@ export default function Rewards() {
                   </div>
                 ) : (
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                    <p className="min-w-0 flex-1 basis-48 font-medium break-words">{reward.title}</p>
+                    <p className="min-w-0 flex-1 basis-48 font-medium break-words">
+                      {reward.title}
+                      {goal?.id === reward.id && (
+                        <span className="tag tag-neutral ml-2 align-middle">
+                          <Target className="size-4 shrink-0" aria-hidden="true" />
+                          Your goal
+                        </span>
+                      )}
+                    </p>
                     <Points value={reward.cost} />
                     {reward.cost <= balance ? (
                       <button type="button" id={`ask-${reward.id}`} className="btn btn-secondary" onClick={() => setConfirming(reward.id)}>
@@ -92,6 +117,17 @@ export default function Rewards() {
                         {reward.cost - balance} more {reward.cost - balance === 1 ? 'point' : 'points'} to go
                       </p>
                     )}
+                    {goal?.id === reward.id ? (
+                      <button type="button" className="btn btn-text type-small" disabled={busy} onClick={() => choose(null)}>
+                        Stop saving<span className="sr-only"> for {reward.title}</span>
+                      </button>
+                    ) : (
+                      reward.cost > balance && (
+                        <button type="button" className="btn btn-text type-small" disabled={busy} onClick={() => choose(reward.id)}>
+                          Save for this<span className="sr-only">: {reward.title}</span>
+                        </button>
+                      )
+                    )}
                   </div>
                 )}
               </li>
@@ -99,6 +135,8 @@ export default function Rewards() {
           </ul>
         )}
       </div>
+
+      <AskForTask className="mt-10" />
 
       {requests.length > 0 && (
         <>

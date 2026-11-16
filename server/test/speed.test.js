@@ -66,7 +66,7 @@ test('P1: GET /today answers the same window, the growth and the stickers in one
   const { mom, kid } = await longHistory(3)
   const today = await kid.get('/today')
   assert.equal(today.status, 200)
-  assert.deepEqual(Object.keys(today.body).sort(), ['growth', 'stickers', 'tasks'])
+  assert.deepEqual(Object.keys(today.body).sort(), ['agreement', 'answers', 'growth', 'stickers', 'tasks']) // K2, K7: answers and the agreement too
   assert.deepEqual(today.body.tasks, (await kid.get('/tasks')).body) // inWindow and the query agree
   assert.deepEqual(today.body.growth, (await kid.get('/growth')).body)
   assert.deepEqual(today.body.stickers, (await kid.get('/stickers')).body)

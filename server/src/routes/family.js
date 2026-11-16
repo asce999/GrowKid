@@ -5,7 +5,7 @@ import { zoneOf } from '../countries.js'
 import { db, loadChild, lockChild, readChildren } from '../db.js'
 import { invalid, refuse, text } from '../errors.js'
 import { cap, checkQuest, dayKeyIn, growthForChild, growthOf, isDay, leaderboardOf, progressOf, recentRest, screen, stickerList } from '../rules.js'
-import { asChild, asRequest, asReward } from '../shape.js'
+import { asChild, asRequest, asReward, asSuggestion } from '../shape.js'
 import { childrenOf, makeDueTasks } from './series.js'
 import { bySoonest, inWindow } from './tasks.js'
 
@@ -22,13 +22,33 @@ function familyOf(req) {
   return me.role === 'parent' ? me.id : me.parentId
 }
 
+/** K3: the child's savings goal as a Reward, or null. The database clears goalRewardId when the reward is deleted. */
+async function goalOf(me) {
+  const reward = me.goalRewardId ? await db.reward.findUnique({ where: { id: me.goalRewardId } }) : null
+  return reward && asReward(reward)
+}
+
+/**
+ * K7: what Today asks a child who has not agreed to agree to: their running series and the family's rewards; null when there is
+ * nothing to agree to. A child who has agreed gets only when, which their parent sees too.
+ */
+async function agreementOf(me) {
+  if (me.agreedAt) return { agreedAt: me.agreedAt.toISOString() }
+  const [series, rewards] = await Promise.all([
+    db.taskSeries.findMany({ where: { childId: me.id, active: true }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] }),
+    db.reward.findMany({ where: { parentId: me.parentId }, orderBy: [{ cost: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }] }),
+  ])
+  if (series.length === 0 && rewards.length === 0) return null
+  return { series: series.map(({ id, title, weekdays, dueTime, points }) => ({ id, title, weekdays, dueTime, points })), rewards: rewards.map(asReward) }
+}
+
 // ------------------------------------------------------------------ growth
 
 /** getGrowth: the child's score as a child may read it. */
 family.get('/growth', async (req, res) => {
   const me = only(req, 'child')
   const [snapshot] = await readChildren([me.id])
-  res.json(growthForChild(snapshot, now()))
+  res.json({ ...growthForChild(snapshot, now()), goal: await goalOf(me) })
 })
 
 /** listGrowth: each of the parent's children by id, with the surprise open (a parent always reads it). */
@@ -44,9 +64,20 @@ family.get('/growth/children', async (req, res) => {
 family.get('/today', async (req, res) => {
   const me = only(req, 'child')
   await makeDueTasks(await childrenOf(req)) // H2: today's repeating tasks first
-  const [snapshot] = await readChildren([me.id])
+  const [[snapshot], goal, agreement, answers] = await Promise.all([
+    readChildren([me.id]),
+    goalOf(me),
+    agreementOf(me),
+    db.rewardRequest.findMany({ where: { childId: me.id, answerSeen: false }, include: requestWith, orderBy: [{ answeredAt: 'asc' }, { id: 'asc' }] }), // K2
+  ])
   const time = now()
-  res.json({ tasks: snapshot.tasks.filter((task) => inWindow(task, time)).sort(bySoonest), growth: growthForChild(snapshot, time), stickers: stickerList(snapshot, time) })
+  res.json({
+    tasks: snapshot.tasks.filter((task) => inWindow(task, time)).sort(bySoonest),
+    growth: { ...growthForChild(snapshot, time), goal },
+    stickers: stickerList(snapshot, time),
+    answers: answers.map(asRequest),
+    agreement,
+  })
 })
 
 /** listStickers */
@@ -68,7 +99,7 @@ family.get('/leaderboard', async (req, res) => {
   const me = only(req, 'child')
   const [parent, siblings] = await Promise.all([
     db.user.findUnique({ where: { id: me.parentId }, select: { leaderboard: true } }),
-    db.user.findMany({ where: { parentId: me.parentId }, select: { id: true, name: true } }),
+    db.user.findMany({ where: { parentId: me.parentId }, select: { id: true, name: true, avatar: true } }),
   ])
   if (siblings.length < 2 || !parent?.leaderboard) return res.json(null)
   const snapshots = await readChildren(siblings.map((child) => child.id))
@@ -122,6 +153,7 @@ family.post('/requests', async (req, res) => {
     await lockChild(tx, me.id)
     const reward = (await tx.reward.findFirst({ where: { id: rewardId, parentId: me.parentId } })) ?? refuse('NOT_FOUND')
     if (growthOf(await loadChild(tx, me.id), now()).shown.balance < reward.cost) refuse('NOT_ENOUGH')
+    await tx.user.updateMany({ where: { id: me.id, goalRewardId: reward.id }, data: { goalRewardId: null } }) // K3: asking for the goal ends it
     return tx.rewardRequest.create({
       data: { childId: me.id, parentId: me.parentId, rewardId: reward.id, title: reward.title, cost: reward.cost, requestedAt: now() },
       include: requestWith,
@@ -158,10 +190,85 @@ family.post('/requests/:id/answer', async (req, res) => {
   if (result === 'declined') screen(note) // C7: the child reads it; a given request stores no note
   const { count } = await db.rewardRequest.updateMany({
     where: { id, parentId: me.id, status: 'requested' },
-    data: { status: result, note: result === 'declined' ? note.trim() : '', answeredBy: me.name, answeredAt: now() },
+    data: { status: result, note: result === 'declined' ? note.trim() : '', answeredBy: me.name, answeredAt: now(), answerSeen: false }, // K2: new to the child
   })
   if (count === 0) refuse((await db.rewardRequest.count({ where: { id } })) ? 'REVIEWED' : 'NOT_FOUND')
   res.json(asRequest(await db.rewardRequest.findUniqueOrThrow({ where: { id }, include: requestWith })))
+})
+
+/** markAnswersSeen (K2): on the child's own requests only, so an answer that arrives meanwhile is still new. */
+family.post('/requests/seen', async (req, res) => {
+  const me = only(req, 'child')
+  const { ids } = req.body ?? {}
+  if (!Array.isArray(ids) || ids.length > 200 || !ids.every((id) => typeof id === 'string')) refuse('INVALID', { ids: 'format' })
+  await db.rewardRequest.updateMany({ where: { childId: me.id, id: { in: ids } }, data: { answerSeen: true } })
+  res.status(204).end()
+})
+
+/** setGoal (K3): one of the family's rewards, or null for none. Another family's reward is NOT_FOUND. */
+family.put('/goal', async (req, res) => {
+  const me = only(req, 'child')
+  const { rewardId } = req.body ?? {}
+  const reward = rewardId === null ? null : ((await db.reward.findFirst({ where: { id: text(rewardId), parentId: me.parentId } })) ?? refuse('NOT_FOUND'))
+  await db.user.update({ where: { id: me.id }, data: { goalRewardId: reward?.id ?? null } })
+  res.json({ goal: reward && asReward(reward) })
+})
+
+// ------------------------------------------------------------------ the agreement and suggestions (rule 29)
+
+/** agree (K7): the child agrees to the family agreement now. */
+family.post('/agree', async (req, res) => {
+  const me = only(req, 'child')
+  await db.user.update({ where: { id: me.id }, data: { agreedAt: now() } })
+  res.status(204).end()
+})
+
+/** askAgreementAgain (K7): the parent clears the child's agreement, so Today asks again. */
+family.delete('/children/:id/agreement', async (req, res) => {
+  const child = await ownChild(req, req.params.id)
+  await db.user.update({ where: { id: child.id }, data: { agreedAt: null } })
+  res.status(204).end()
+})
+
+const suggestionWith = { child: { select: { name: true } } }
+const IDEA_ID = /^[a-z0-9-]{1,40}$/
+
+/** suggestTask (K6): an idea's id, never words; at most 3 waiting. The same idea already waiting is answered with that one. */
+family.post('/suggestions', async (req, res) => {
+  const me = only(req, 'child')
+  const { ideaId } = req.body ?? {}
+  invalid({ ideaId: !(typeof ideaId === 'string' && IDEA_ID.test(ideaId)) && 'format' })
+  const [row, made] = await db.$transaction(async (tx) => {
+    await lockChild(tx, me.id) // the count and the insert under one lock, so two at once cannot pass the cap
+    const same = await tx.suggestion.findFirst({ where: { childId: me.id, ideaId, status: 'open' }, include: suggestionWith })
+    if (same) return [same, false]
+    cap('suggestions', await tx.suggestion.count({ where: { childId: me.id, status: 'open' } }))
+    return [await tx.suggestion.create({ data: { childId: me.id, ideaId, createdAt: now() }, include: suggestionWith }), true]
+  })
+  res.status(made ? 201 : 200).json(asSuggestion(row))
+})
+
+/** listSuggestions (K6): those still waiting, oldest first: a child's own, or the parent's family's. */
+family.get('/suggestions', async (req, res) => {
+  const me = signedIn(req)
+  if (me.role === 'moderator') refuse('NOT_ALLOWED')
+  const rows = await db.suggestion.findMany({
+    where: { status: 'open', ...(me.role === 'child' ? { childId: me.id } : { child: { parentId: me.id } }) },
+    include: suggestionWith,
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+  })
+  res.json(rows.map(asSuggestion))
+})
+
+/** answerSuggestion (K6): accepted once the task is made, or declined ("Not now"); once. */
+family.post('/suggestions/:id/answer', async (req, res) => {
+  const me = only(req, 'parent')
+  const id = text(req.params.id)
+  const { result } = req.body ?? {}
+  invalid({ result: !['accepted', 'declined'].includes(result) && 'required' })
+  const { count } = await db.suggestion.updateMany({ where: { id, status: 'open', child: { parentId: me.id } }, data: { status: result } })
+  if (count === 0) refuse((await db.suggestion.count({ where: { id, child: { parentId: me.id } } })) ? 'REVIEWED' : 'NOT_FOUND')
+  res.status(204).end()
 })
 
 // ------------------------------------------------------------------ quests and rest days

@@ -63,3 +63,9 @@ const WEEKDAY = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 /** H1: a series' days in words: "Repeats every day", or "Repeats Mon, Wed". weekdays is 7 bits, Monday = 1. */
 export const repeatText = (weekdays) =>
   weekdays === 127 ? 'Repeats every day' : `Repeats ${WEEKDAY.filter((_, i) => weekdays & (1 << i)).join(', ')}`
+
+/** K7: a series' 'HH:MM' as the screens write a time: '6:00 pm'. */
+export const clockText = (hhmm) => {
+  const [h, m] = hhmm.split(':').map(Number)
+  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'am' : 'pm'}`
+}

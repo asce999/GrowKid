@@ -19,7 +19,7 @@ function Part({ id, title, children }) {
 
 const link = 'font-medium text-navy-800 underline underline-offset-4'
 // C8: the date this page last changed. A parent's consent is recorded against it: server/src/rules.js PRIVACY_VERSION holds the same date.
-const UPDATED = '15 November 2026'
+const UPDATED = '16 November 2026'
 
 export default function Privacy() {
   const signedIn = Boolean(useSession((s) => s.user))
@@ -119,7 +119,9 @@ export default function Privacy() {
       <Part id="stored-title" title="What is stored, and where">
         <p>
           Everything is stored on the GrowKid server, not on your device: for a parent, a name, an email and a country; for a child, a
-          name and a username; and every task, repeating task, proof photo and video, note, score and report. The country decides where each
+          name and a username; and every task, repeating task, proof photo and video, note, score and report. A child can also have a
+          reward they are saving for, the tasks they asked for from GrowKid’s list of ideas, and when they agreed to the family
+          agreement, and a badge they picked from a colour and one of their stickers, which their family sees beside their name. Their parent sees the suggestions, the agreement and the badge; the goal is the child’s own. Whether the reward moment plays sound is a setting on the child's account. The country decides where each
           day starts and ends.
         </p>
         <p>

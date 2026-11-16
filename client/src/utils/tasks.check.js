@@ -1,6 +1,6 @@
 // The one runnable check for the task rules: `npm run check`. It fails if a rule breaks.
 import assert from 'node:assert/strict'
-import { inThisWeek, isOpen, nextTask, repeatText, statusOf } from './tasks.js'
+import { clockText, inThisWeek, isOpen, nextTask, repeatText, statusOf } from './tasks.js'
 
 const hour = 3_600_000
 const at = (hours) => new Date(Date.now() + hours * hour).toISOString()
@@ -33,4 +33,5 @@ assert.equal(inThisWeek(task('todo', at(24 * 8))), false) // more than a week aw
 assert.equal(repeatText(127), 'Repeats every day')
 assert.equal(repeatText(1 | 4), 'Repeats Mon, Wed')
 assert.equal(repeatText(64), 'Repeats Sun')
+assert.deepEqual(['18:00', '00:05', '12:30', '09:00'].map(clockText), ['6:00 pm', '12:05 am', '12:30 pm', '9:00 am'])
 console.log('task rules hold')

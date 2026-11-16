@@ -8,9 +8,10 @@
  * server, and ?clock=<days> moves the clock (see ./clock.js).
  *
  * @typedef {'parent' | 'child' | 'moderator'} Role
- * @typedef {{ id: string, role: Role, name: string, email?: string, username?: string, zone?: string }} User (zone: the family's time zone, P13; none for a moderator)
+ * @typedef {{ colour: 'navy' | 'sprout' | 'sun' | 'ember', stickerId: string, shape: string, kind?: string }} Avatar  a child's badge (K10)
+ * @typedef {{ id: string, role: Role, name: string, email?: string, username?: string, zone?: string, avatar?: Avatar, sound?: boolean }} User (zone: the family's time zone, P13; none for a moderator. avatar and sound: a child's, K10 and K11)
  *   A parent or moderator has an email; a child has a username. Never a password.
- * @typedef {{ id: string, name: string, username: string }} Child
+ * @typedef {{ id: string, name: string, username: string, agreedAt?: string, avatar?: Avatar }} Child  agreedAt: when the child agreed to the family agreement (K7), absent until then
  *
  * @typedef {object} Review  A parent's answer to one proof.
  * @property {'approved' | 'sentBack'} result
@@ -79,11 +80,13 @@
  *   points, XP or level
  * @property {Quest | null} quest this week's quest, or null when none is set
  *
- * @typedef {Score & { shown: Score, questAwards: QuestAward[] }} Growth
+ * @typedef {Score & { shown: Score, questAwards: QuestAward[], goal?: Reward | null, weeks?: Progress['weeks'], bestWeek?: number }} Growth
  *   shown is the score as the child has been shown it on Today: an approval whose result they
  *   have not seen yet (resultSeen false) still counts as waiting there, and so does a quest
  *   completed with it. The reward moment plays from shown to the score itself. What a child can
- *   spend is shown.balance. questAwards are the quests completed, newest first.
+ *   spend is shown.balance. questAwards are the quests completed, newest first. For a child only: goal, the reward they are
+ *   saving for (K3), or null; weeks, their last six weeks as Progress has them, and bestWeek, the most tasks approved in any one
+ *   week, both from the score as they have been shown it (K4).
  *
  * @typedef {object} Sticker
  * @property {string} id
@@ -97,6 +100,7 @@
  * @property {number} need        how much of that earns it
  * @property {number} [have]      how much of it the child has, at most need; only on a sticker not
  *   yet earned or not yet seen, and only from listStickers
+ * @property {string[]} [missing]  the All six kinds sticker only, while not earned or not seen: the kinds still to do (K1)
  * @property {string} [earnedAt]  ISO time of the approval that earned it; absent until earned
  * @property {string} [taskId]    the task that approval was for
  * @property {string} [taskTitle]
@@ -157,7 +161,13 @@
  * @property {string | null} surprise
  * @typedef {{ week: string, target: number, bonus: number, surprise: string | null, earnedAt: string,
  *   taskId: string, taskTitle: string, seen?: boolean }} QuestAward
- * @typedef {{ name: string, tasks: number, you: boolean }} LeaderboardEntry
+ * @typedef {{ name: string, tasks: number, you: boolean, avatar?: Avatar }} LeaderboardEntry
+ * @typedef {{ id: string, fileUrl: string, fileType: string, taskId: string, taskTitle: string, at: string, cheer?: Cheer }} MyProof
+ *   an approved photo or video of the signed-in child's (K5); at is when it was approved
+ * @typedef {{ id: string, childId: string, childName: string, ideaId: string, createdAt: string }} Suggestion  a child's suggestion
+ *   of one of utils/ideas.js's ideas, still waiting (K6); ideaId may name an idea the app no longer has
+ * @typedef {{ series: { id: string, title: string, weekdays: number, dueTime: string, points: number }[], rewards: Reward[] } | { agreedAt: string }} Agreement
+ *   what Today asks a child to agree to (K7), or, once they have, only when they agreed
  */
 import axios from 'axios'
 import { daysAhead } from './clock.js'
@@ -383,15 +393,16 @@ export const HISTORY_PAGE = 50
 
 /**
  * Today's data in one call (P1), read from one moment: the child's task window, their growth and their stickers, as listTasks,
- * getGrowth and listStickers give them. Rejects NOT_ALLOWED for other roles.
- * @type {() => Promise<{ tasks: Task[], growth: Growth, stickers: Sticker[] }>}
+ * getGrowth and listStickers give them; the answers to their requests not yet shown (K2), oldest first; and the agreement to ask
+ * for (K7), or null when they have agreed or there is nothing to agree to. Rejects NOT_ALLOWED for other roles.
+ * @type {() => Promise<{ tasks: Task[], growth: Growth, stickers: Sticker[], answers: RewardRequest[], agreement: Agreement | null }>}
  */
 export const getToday = () => call('get', '/today')
 
 /**
  * The navigation's numbers in one call (P3): for a parent, proofs waiting for review and reward requests waiting for an answer;
- * for a child, review results not yet seen on Today. Rejects NOT_ALLOWED for a moderator.
- * @type {() => Promise<{ proofs: number, requests: number } | { results: number }>}
+ * for a child, review results and request answers not yet seen on Today (K2). Rejects NOT_ALLOWED for a moderator.
+ * @type {() => Promise<{ proofs: number, requests: number } | { results: number, answers: number }>}
  */
 export const getCounts = () => call('get', '/counts')
 
@@ -594,6 +605,82 @@ export const setRestDay = (childId, day, rest) => call('post', `/children/${at(c
  * @type {(taskId: string | null) => Promise<Task[]>}
  */
 export const pinTask = (taskId) => call('put', '/pin', { taskId })
+
+/**
+ * The signed-in child picks a badge (K10): one of four colours and a sticker they have earned and seen, or both null for none.
+ * Answers with their User. Rejects INVALID with fields.colour or fields.stickerId.
+ * @type {(colour: Avatar['colour'] | null, stickerId: string | null) => Promise<User>}
+ */
+export const setAvatar = (colour, stickerId) => call('put', '/me/avatar', { colour, stickerId })
+
+/**
+ * The signed-in child turns the reward moment's sound and vibration on or off (K11). Answers with their User.
+ * @type {(sound: boolean) => Promise<User>}
+ */
+export const setSound = (sound) => call('put', '/me/sound', { sound })
+
+/**
+ * The signed-in child has seen the answers to these requests of theirs on Today (K2); others are left as they are. At most 200.
+ * @type {(ids: string[]) => Promise<void>}
+ */
+export const markAnswersSeen = async (ids) => {
+  await call('post', '/requests/seen', { ids: ids.slice(0, 200) })
+}
+
+/**
+ * The signed-in child chooses one of the family's rewards to save for, or null for none (K3). Asking for it, or the reward being
+ * deleted, clears it. Rejects NOT_FOUND for a reward that is not their family's.
+ * @type {(rewardId: string | null) => Promise<{ goal: Reward | null }>}
+ */
+export const setGoal = (rewardId) => call('put', '/goal', { rewardId })
+
+/** How many listMyProofs gives at once, so a shorter page means there is no more. */
+export const MY_PROOFS_PAGE = 24
+
+/**
+ * The signed-in child's approved photos and videos (K5), newest first, MY_PROOFS_PAGE from offset, once Today has shown each
+ * approval. Rejects NOT_ALLOWED for other roles.
+ * @type {(offset?: number) => Promise<MyProof[]>}
+ */
+export const listMyProofs = (offset = 0) => call('get', `/proofs/mine?offset=${offset}`)
+
+/**
+ * The signed-in child suggests a task by an idea's id (K6). The same idea already waiting answers with that suggestion. Rejects
+ * INVALID (fields.ideaId), and QUOTA (fields.quota 'suggestions') with 3 already waiting.
+ * @type {(ideaId: string) => Promise<Suggestion>}
+ */
+export const suggestTask = (ideaId) => call('post', '/suggestions', { ideaId })
+
+/**
+ * Suggestions still waiting, oldest first: a child's own, or the signed-in parent's family's. Rejects NOT_ALLOWED for a moderator.
+ * @type {() => Promise<Suggestion[]>}
+ */
+export const listSuggestions = () => call('get', '/suggestions')
+
+/**
+ * A parent answers a suggestion once: 'accepted' after making the task, 'declined' for Not now. Rejects REVIEWED when it was
+ * answered already, NOT_FOUND for another family's.
+ * @type {(id: string, result: 'accepted' | 'declined') => Promise<void>}
+ */
+export const answerSuggestion = async (id, result) => {
+  await call('post', `/suggestions/${at(id)}/answer`, { result })
+}
+
+/**
+ * The signed-in child agrees to the family agreement (K7).
+ * @type {() => Promise<void>}
+ */
+export const agree = async () => {
+  await call('post', '/agree')
+}
+
+/**
+ * A parent clears a child's agreement, so Today asks them again (K7). Rejects NOT_FOUND for a child who is not theirs.
+ * @type {(childId: string) => Promise<void>}
+ */
+export const askAgreementAgain = async (childId) => {
+  await call('delete', `/children/${at(childId)}/agreement`)
+}
 
 /**
  * The family's children and the tasks each has had approved this week, by name, most first,

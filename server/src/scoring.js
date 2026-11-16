@@ -20,6 +20,10 @@ const LEVEL_XP = 100
  * skill. A sticker is plain data: it is earned once the child's record (see recordOf) has `need`
  * or more of its `measure`, and a sticker once earned is never lost.
  */
+/** The six kinds of task (rule 11), in the order of DESIGN.md section 8, with the names the kind stickers carry (K8). */
+const KIND_NAMES = { chores: 'Chores', study: 'Study', reading: 'Reading', creative: 'Music and art', outdoors: 'Outdoors', health: 'Health' }
+export const KINDS = Object.keys(KIND_NAMES)
+
 export const STICKERS = [
   { id: 'first-task', name: 'First task', how: 'Awarded when your first task is approved.', shape: 'seal', tone: 'sun', measure: 'approved', need: 1 },
   { id: 'tasks-10', name: '10 tasks', how: 'Awarded when 10 of your tasks have been approved.', shape: 'seal', tone: 'sun', measure: 'approved', need: 10 },
@@ -35,6 +39,10 @@ export const STICKERS = [
   { id: 'first-try-5', name: 'Right first time', how: 'Awarded when 5 tasks have been approved on the first try.', shape: 'star', tone: 'sun', measure: 'firstTry', need: 5 },
   { id: 'quest-1', name: 'First quest', how: 'Awarded when you complete your first weekly quest.', shape: 'star', tone: 'sun', measure: 'quests', need: 1 },
   { id: 'quest-4', name: '4 quests', how: 'Awarded when you have completed 4 weekly quests.', shape: 'star', tone: 'sun', measure: 'quests', need: 4 },
+  // K8: one per kind of task, each a star in its kind's icon (kind), earned at 10 approved tasks of that kind
+  ...Object.entries(KIND_NAMES).map(([kind, name]) => ({
+    id: `kind-${kind}`, name: `${name} star`, how: `Awarded when 10 of your ${name.toLowerCase()} tasks have been approved.`, shape: 'star', tone: 'sun', kind, measure: kind, need: 10,
+  })),
 ]
 
 // Every day question is answered in one time zone (rule 25): `zone` is an IANA name such as 'Asia/Kolkata', and none
@@ -168,14 +176,29 @@ export function score(tasks, time, rest = [], zone) {
  */
 export function progress(tasks, time, rest = [], zone) {
   const approved = approvedOf(tasks)
+  const sinceMonday = (dayOf(time, zone) - mondayOf(time, zone)) / DAY
+  return { weeks: weeksOf(tasks, time, zone), calendar: streakOf(approved, tasks, time, 21 + sinceMonday + 1, restSet(rest), zone).week }
+}
+
+/** The last six weeks, this one last, each with the tasks approved in it and the XP they earned (rule 14; K4 for the child). */
+export function weeksOf(tasks, time, zone) {
+  const approved = approvedOf(tasks)
   const monday = mondayOf(time, zone)
-  const weeks = Array.from({ length: 6 }, (_, i) => {
+  return Array.from({ length: 6 }, (_, i) => {
     const start = monday - 7 * (5 - i) * DAY
     const done = approved.filter((task) => mondayOf(task.proofs.at(-1).sentAt, zone) === start)
     return { start: startOf(start, zone), tasks: done.length, xp: sum(done) }
   })
-  const sinceMonday = (dayOf(time, zone) - monday) / DAY
-  return { weeks, calendar: streakOf(approved, tasks, time, 21 + sinceMonday + 1, restSet(rest), zone).week }
+}
+
+/** K4: the most tasks approved in any one week, by the week the approved proof was sent in; 0 before the first. */
+export function bestWeekOf(tasks, zone) {
+  const byWeek = new Map()
+  for (const task of approvedOf(tasks)) {
+    const week = mondayOf(task.proofs.at(-1).sentAt, zone)
+    byWeek.set(week, (byWeek.get(week) ?? 0) + 1)
+  }
+  return Math.max(0, ...byWeek.values())
 }
 
 /**
@@ -189,6 +212,7 @@ const recordFor = (approved, tasks, time, rest, quests, zone) => ({
   kinds: new Set(approved.map((t) => t.category)).size,
   firstTry: approved.filter((t) => t.proofs.length === 1).length,
   quests,
+  ...Object.fromEntries(KINDS.map((kind) => [kind, approved.filter((t) => t.category === kind).length])), // K8
 })
 
 /** The record the stickers are measured by, for the tasks as they stand. streak is the best one. zone: see dayKey. */

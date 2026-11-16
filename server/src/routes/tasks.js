@@ -22,6 +22,9 @@ export function visible(req) {
   return { child: { parentId: me.id } }
 }
 
+/** A whole number from a query string, or the fallback. */
+const number = (value, fallback) => (/^\d{1,6}$/.test(value ?? '') ? Number(value) : fallback)
+
 /** One task this user may see, with its proofs, or NOT_FOUND. */
 const visibleTask = async (req, id) =>
   (await db.task.findFirst({ where: { id: text(id), ...visible(req) }, include: taskWith })) ?? refuse('NOT_FOUND')
@@ -68,7 +71,6 @@ tasks.get('/tasks', async (req, res) => {
 /** listHistory (P2, P8): approved tasks this user may see, newest due first, `limit` (1 to 50, default 50) from `offset`. Before /tasks/:id, which would take "history" for an id. */
 tasks.get('/tasks/history', async (req, res) => {
   const where = { AND: [visible(req), { status: 'approved' }] }
-  const number = (value, fallback) => (/^\d{1,6}$/.test(value ?? '') ? Number(value) : fallback)
   const offset = number(req.query.offset, 0)
   const limit = Math.min(50, Math.max(1, number(req.query.limit, 50)))
   const rows = await db.task.findMany({ where, include: taskWith, orderBy: [{ dueAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }], skip: offset, take: limit })
@@ -190,6 +192,30 @@ tasks.post('/tasks/:id/proofs', proofLimit, mayReceiveProof, upload, async (req,
   res.status(201).json(asTask(row, { files: true }))
 })
 
+/**
+ * listMyProofs (K5): the signed-in child's approved photos and videos, newest approval first, `limit` (1 to 24, default 24) from
+ * `offset`. Only once Today has shown the approval (rule 13), and only proofs that still have a file; a PDF is left out.
+ */
+tasks.get('/proofs/mine', async (req, res) => {
+  const me = only(req, 'child')
+  const rows = await db.proof.findMany({
+    where: { result: 'approved', task: { childId: me.id, resultSeen: true }, OR: [{ fileType: { startsWith: 'image/' } }, { fileType: { startsWith: 'video/' } }] },
+    include: { task: { select: { title: true } } },
+    orderBy: [{ reviewedAt: 'desc' }, { id: 'desc' }],
+    skip: number(req.query.offset, 0),
+    take: Math.min(24, Math.max(1, number(req.query.limit, 24))),
+  })
+  res.json(rows.map((p) => ({
+    id: p.id,
+    fileUrl: `/api/proofs/${p.id}/file`,
+    fileType: p.fileType,
+    taskId: p.taskId,
+    taskTitle: p.task.title,
+    at: p.reviewedAt.toISOString(),
+    cheer: p.cheerKind || p.cheerLine ? { kind: p.cheerKind, line: p.cheerLine } : undefined,
+  })))
+})
+
 /** The proof file, to the task's child and that child's parent only (A5). A moderator is NOT_ALLOWED, a signed-out visitor NOT_SIGNED_IN. */
 tasks.get('/proofs/:id/file', async (req, res) => {
   const proof = await db.proof.findFirst({ where: { id: text(req.params.id), fileType: { not: null }, task: visible(req) } })
@@ -291,10 +317,16 @@ tasks.put('/pin', async (req, res) => {
 
 // ------------------------------------------------------------------ counts
 
-/** getCounts (P3): the navigation's numbers in one call. A parent's proofs and reward requests waiting; a child's new results. */
+/** getCounts (P3): the navigation's numbers in one call. A parent's proofs and reward requests waiting; a child's new results and, K2, answers. */
 tasks.get('/counts', async (req, res) => {
   const me = signedIn(req)
-  if (me.role === 'child') return res.json({ results: await db.task.count({ where: { childId: me.id, resultSeen: false } }) })
+  if (me.role === 'child') {
+    const [results, answers] = await Promise.all([
+      db.task.count({ where: { childId: me.id, resultSeen: false } }),
+      db.rewardRequest.count({ where: { childId: me.id, answerSeen: false } }),
+    ])
+    return res.json({ results, answers })
+  }
   if (me.role !== 'parent') refuse('NOT_ALLOWED')
   const [proofs, requests] = await Promise.all([
     db.task.count({ where: { status: 'review', child: { parentId: me.id } } }),

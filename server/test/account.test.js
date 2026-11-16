@@ -120,7 +120,7 @@ test('signIn: a parent by email, a child by username, in any case; the User hold
   const child = as(server.base)
   const own = await child.post('/session', { identifier: kid.username.toUpperCase(), password: kid.password })
   assert.equal(own.status, 200)
-  assert.deepEqual(own.body, { id: kid.id, role: 'child', name: 'Kid', username: kid.username, zone: 'Asia/Kolkata' }) // P13: a child's zone is the parent's
+  assert.deepEqual(own.body, { id: kid.id, role: 'child', name: 'Kid', username: kid.username, zone: 'Asia/Kolkata', sound: true }) // P13: a child's zone is the parent's; K11: sound on until turned off
   assert.deepEqual((await child.get('/session')).body, own.body)
 })
 

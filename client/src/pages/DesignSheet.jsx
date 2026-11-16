@@ -1,8 +1,10 @@
 import { BadgeCheck, BookOpen, Check, Clock, Flame, Sprout, Star } from 'lucide-react'
 import GrowthRuler from '../components/GrowthRuler.jsx'
+import Plant from '../components/Plant.jsx'
 import Logo, { LogoMark } from '../components/Logo.jsx'
 import StatusTag from '../components/StatusTag.jsx'
 import Sticker from '../components/Sticker.jsx'
+import { plantText } from '../utils/plant.js'
 
 // A colour token's value, read from the stylesheet so this page cannot drift from index.css.
 const tokenValue = (token) =>
@@ -142,6 +144,17 @@ export default function DesignSheet() {
             around it.
           </p>
         </div>
+      </Section>
+
+      <Section title="Plant" note="K9: the level as a plant, ten stages and then rings. Worked out from the level; never a character.">
+        <ul className="grid grid-cols-3 gap-4 sm:grid-cols-6">
+          {Array.from({ length: 12 }, (_, i) => (
+            <li key={i} className="grid justify-items-center gap-1 text-center">
+              <Plant level={i + 1} className="size-24" />
+              <span className="type-small">{plantText(i + 1)}</span>
+            </li>
+          ))}
+        </ul>
       </Section>
 
       <Section title="Colour" note="Five families. Each has one job, so a colour always means the same thing.">

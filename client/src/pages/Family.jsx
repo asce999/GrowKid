@@ -1,10 +1,10 @@
 import { Link } from 'react-router-dom'
 import { KeyRound } from 'lucide-react'
 import * as api from '../api/index.js'
+import Badge from '../components/Badge.jsx'
 import { EmptyState, ErrorState, Message, PageLoading } from '../components/states.jsx'
 import { useLoad } from '../hooks/useLoad.js'
 import { useOnce } from '../hooks/useOnce.js'
-import { initialOf } from '../utils/format.js'
 
 export default function Family() {
   const children = useLoad(api.listChildren)
@@ -68,9 +68,7 @@ export default function Family() {
             <ul className="rounded-card border bg-white">
               {children.data.map((child) => (
                 <li key={child.id} className="flex items-center gap-3 border-b px-4 py-3 last:border-b-0 sm:px-6">
-                  <span className="avatar" aria-hidden="true">
-                    {initialOf(child.name)}
-                  </span>
+                  <Badge avatar={child.avatar} name={child.name} />
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium">{child.name}</p>
                     <p className="type-small muted truncate">Signs in as {child.username}</p>

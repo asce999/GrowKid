@@ -1,4 +1,4 @@
-import { MEASURE_WORDS, STICKER_ICONS, isEarned } from '../utils/stickers.js'
+import { MEASURE_WORDS, iconOf, isEarned } from '../utils/stickers.js'
 import Sticker from './Sticker.jsx'
 
 // What lies ahead for a child: the levels to come, and the stickers they are closest to. Both
@@ -24,7 +24,7 @@ export function GrowthPath({ level, xpForNext, stickers }) {
               <p className="type-small muted">Starts at {((n - 1) * xpForNext).toLocaleString('en-IN')} XP</p>
               {sticker && (
                 <div className="mt-2 flex items-center gap-3">
-                  <Sticker icon={STICKER_ICONS[sticker.shape]} shape={sticker.shape} tone={sticker.tone} slot={!earned} className="size-10" />
+                  <Sticker icon={iconOf(sticker)} shape={sticker.shape} tone={sticker.tone} slot={!earned} className="size-10" />
                   <p className="type-small font-medium">
                     {sticker.name}
                     {!earned && <span className="sr-only">, not earned yet</span>}
@@ -55,7 +55,7 @@ export function NextStickers({ stickers }) {
       <ul className="mt-3 overflow-hidden rounded-card border bg-white">
         {next.map((s) => (
           <li key={s.id} className="flex items-center gap-3 border-b px-4 py-3 last:border-b-0 sm:px-6">
-            <Sticker icon={STICKER_ICONS[s.shape]} shape={s.shape} tone={s.tone} slot className="size-12" />
+            <Sticker icon={iconOf(s)} shape={s.shape} tone={s.tone} slot className="size-12" />
             <span className="grid min-w-0 flex-1 gap-0.5">
               <span className="font-medium">{s.name}</span>
               <span className="type-small muted">

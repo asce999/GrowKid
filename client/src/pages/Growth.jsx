@@ -1,18 +1,22 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Gift } from 'lucide-react'
+import { Gift, Video } from 'lucide-react'
 import * as api from '../api/index.js'
+import Badge from '../components/Badge.jsx'
 import { GrowthPath, NextStickers } from '../components/GrowthPath.jsx'
 import GrowthRuler from '../components/GrowthRuler.jsx'
+import Plant from '../components/Plant.jsx'
 import { Gain } from '../components/Review.jsx'
 import { EmptyState, ErrorState, Message, PageLoading } from '../components/states.jsx'
 import Sticker from '../components/Sticker.jsx'
 import Streak from '../components/Streak.jsx'
 import { CategoryTile, Points } from '../components/Task.jsx'
+import Weeks from '../components/Weeks.jsx'
 import { noticeExpiry, useLoad } from '../hooks/useLoad.js'
 import { dateOfKey, dayLabel, whenText } from '../utils/format.js'
 import { errorText } from '../utils/messages.js'
-import { STICKER_ICONS, isEarned } from '../utils/stickers.js'
+import { plantOf, plantText } from '../utils/plant.js'
+import { iconOf, isEarned } from '../utils/stickers.js'
 import { lastReview } from '../utils/tasks.js'
 
 const weekStart = dayLabel({ day: 'numeric', month: 'long' }) // P14: a week's Monday as a key, the same day on every device
@@ -24,15 +28,19 @@ const weekStart = dayLabel({ day: 'numeric', month: 'long' }) // P14: a week's M
 
 export default function Growth() {
   const loaded = useLoad(
-    () => Promise.all([api.getGrowth(), api.listTasks(), api.listStickers(), api.getLeaderboard(), api.listHistory()]),
+    () => Promise.all([api.getGrowth(), api.listTasks(), api.listStickers(), api.getLeaderboard(), api.listHistory(), api.listMyProofs()]),
     [],
     { live: true },
   )
   const [more, setMore] = useState({ pages: [], busy: false, problem: null }) // P8: history pages after the first, from "Show more"
+  const [morePhotos, setMorePhotos] = useState({ pages: [], busy: false, problem: null }) // K5: the same for my proofs
 
   if (loaded.status === 'loading') return <PageLoading rows={4} />
   if (loaded.status === 'error') return <ErrorState error={loaded.error} onRetry={loaded.reload} />
-  const [growth, tasks, stickers, board, firstPage] = loaded.data
+  const [growth, tasks, stickers, board, firstPage, firstPhotos] = loaded.data
+  const photoPages = [firstPhotos, ...morePhotos.pages]
+  const photos = photoPages.flat()
+  const allPhotos = photoPages.at(-1).length < api.MY_PROOFS_PAGE
   const shown = growth.shown
   const pages = [firstPage, ...more.pages]
   const done = pages.at(-1).length < api.HISTORY_PAGE // the last page was short: nothing older is left
@@ -58,6 +66,16 @@ export default function Growth() {
     }
   }
 
+  async function showMorePhotos() {
+    setMorePhotos((m) => ({ ...m, busy: true, problem: null }))
+    try {
+      const page = await api.listMyProofs(photos.length)
+      setMorePhotos((m) => ({ pages: [...m.pages, page], busy: false, problem: null }))
+    } catch (error) {
+      setMorePhotos((m) => ({ ...m, busy: false, problem: errorText(noticeExpiry(error)) }))
+    }
+  }
+
   return (
     <>
       <title>Growth – GrowKid</title>
@@ -66,6 +84,21 @@ export default function Growth() {
         <GrowthRuler {...shown} />
         <div className="mt-6">
           <Streak streak={shown.streak} best />
+        </div>
+      </section>
+
+      {/* K9: the level as a plant, worked out from the level the child has been shown */}
+      <section className="mt-6 flex items-center gap-4 sm:gap-6" aria-labelledby="plant-title">
+        <Plant level={shown.level} className="size-32 shrink-0 sm:size-40" />
+        <div className="min-w-0">
+          <h2 id="plant-title" className="type-subheading">
+            {plantText(shown.level)}
+          </h2>
+          <p className="type-small muted mt-1">
+            {plantOf(shown.level).next
+              ? `At level ${shown.level + 1} it becomes a ${plantOf(shown.level).next.toLowerCase()}.`
+              : 'It grows a ring for every level from here.'}
+          </p>
         </div>
       </section>
 
@@ -92,6 +125,7 @@ export default function Growth() {
             {board.map((entry, i) => (
               <li key={i} className={`flex items-center gap-3 border-b px-4 py-3 last:border-b-0 sm:px-6 ${entry.you ? 'font-semibold' : ''}`}>
                 <span className="type-game w-6 shrink-0 text-center">{i + 1}</span>
+                <Badge avatar={entry.avatar} name={entry.name} />
                 <span className="min-w-0 flex-1 break-words">
                   {entry.name}
                   {entry.you && ' (you)'}
@@ -103,6 +137,55 @@ export default function Growth() {
             ))}
           </ol>
         </>
+      )}
+
+      <div className="mt-10">
+        <Weeks weeks={growth.weeks} who="you" whose="yours" title="Your weeks" />
+        {growth.bestWeek > 0 && (
+          <p className="mt-2 font-medium">
+            Your best week: {growth.bestWeek} {growth.bestWeek === 1 ? 'task' : 'tasks'}
+          </p>
+        )}
+      </div>
+
+      {photos.length > 0 && (
+        <section className="mt-10" aria-labelledby="my-proofs-title">
+          <h2 id="my-proofs-title" className="type-subheading">
+            My proofs
+          </h2>
+          <p className="type-small muted mt-1">Photos and videos from your approved tasks, newest first.</p>
+          <ul className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
+            {photos.map((photo) => (
+              <li key={photo.id}>
+                <Link to={`/child/tasks/${photo.taskId}`} className="block overflow-hidden rounded-card">
+                  {photo.fileType.startsWith('image/') ? (
+                    <img src={photo.fileUrl} alt={`Your photo for “${photo.taskTitle}”`} width={240} height={240} loading="lazy" className="aspect-square w-full bg-navy-100 object-cover" />
+                  ) : (
+                    <span className="grid aspect-square w-full place-content-center justify-items-center gap-1 bg-navy-800 p-2 text-center text-white">
+                      <Video className="size-8" aria-hidden="true" />
+                      <span className="type-small line-clamp-2 break-words">
+                        <span className="sr-only">Your video for </span>
+                        {photo.taskTitle}
+                      </span>
+                    </span>
+                  )}
+                </Link>
+              </li>
+            ))}
+          </ul>
+          {!allPhotos && (
+            <div className="mt-4 grid justify-items-start gap-3">
+              {morePhotos.problem && (
+                <Message tone="danger" alert>
+                  {morePhotos.problem}
+                </Message>
+              )}
+              <button type="button" className="btn btn-secondary" disabled={morePhotos.busy} onClick={showMorePhotos}>
+                {morePhotos.busy ? 'Loading…' : 'Show more'}
+              </button>
+            </div>
+          )}
+        </section>
       )}
 
       <h2 className="type-display mt-6 text-navy-800 sm:mt-8">What you earned</h2>
@@ -145,7 +228,7 @@ export default function Growth() {
                 </li>
               ) : (
                 <li key={sticker.id} className="flex items-center gap-3 border-b px-4 py-3 last:border-b-0 sm:px-6">
-                  <Sticker icon={STICKER_ICONS[sticker.shape]} shape={sticker.shape} tone={sticker.tone} className="size-10" />
+                  <Sticker icon={iconOf(sticker)} shape={sticker.shape} tone={sticker.tone} className="size-10" />
                   <span className="grid min-w-0 flex-1 gap-0.5">
                     <span className="font-medium">Sticker: {sticker.name}</span>
                     <span className="type-small muted">

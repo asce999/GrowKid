@@ -71,5 +71,14 @@ export const IDEAS = [
   idea('health-10', 'health', '11-14', 'Breathe and rest', 'Sit quietly for five minutes and breathe slowly.', 'A note on how you felt after.', 15),
 ]
 
+/** K6: the idea with this id, or undefined when the app no longer has it (a child's suggestion can outlive an idea). */
+export const ideaOf = (id) => IDEAS.find((i) => i.id === id)
+
+/** The words for a suggestion's idea (K6): its title in quotes, or "an idea from the list" when the app no longer has it. */
+export const ideaWords = (ideaId) => {
+  const idea = ideaOf(ideaId)
+  return idea ? `“${idea.title}”` : 'an idea from the list'
+}
+
 /** The age bands, as the picker shows them. */
 export const AGES = { '8-10': 'Ages 8 to 10', '11-14': 'Ages 11 to 14' }

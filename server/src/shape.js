@@ -1,4 +1,12 @@
 import { zoneOf } from './countries.js'
+import { STICKERS } from './scoring.js'
+
+/** K10: a stored badge, "<colour>:<stickerId>", as the screens draw it: the colour and the sticker's shape and kind. Left out when none. */
+export const avatarOf = (stored) => {
+  const [colour, id] = (stored ?? '').split(':')
+  const sticker = STICKERS.find((s) => s.id === id)
+  return sticker ? { colour, stickerId: id, shape: sticker.shape, kind: sticker.kind } : undefined
+}
 
 /** Rows to API shapes (plan section 6): an optional field is left out, never null, and a hash or tokenVersion never leaves. */
 
@@ -6,12 +14,16 @@ import { zoneOf } from './countries.js'
  * A User as index.js documents it. P13: zone is the family's time zone, so the screens count days as the server does (rule 25): a
  * parent's from their country, a child's from their parent's (read with the parent's country). A moderator has none.
  */
-export const asUser = ({ id, role, name, email, username, country, parent }) => ({
+export const asUser = ({ id, role, name, email, username, country, parent, avatar, sound }) => ({
   id, role, name, email: email ?? undefined, username: username ?? undefined, zone: zoneOf(country ?? parent?.country),
+  avatar: avatarOf(avatar), sound: role === 'child' ? sound : undefined, // K10, K11: a child's
 })
 
-/** A Child as index.js documents it. */
-export const asChild = ({ id, name, username }) => ({ id, name, username })
+/** A Child as index.js documents it. K7: agreedAt only once the child has agreed. */
+export const asChild = ({ id, name, username, agreedAt, avatar }) => ({ id, name, username, agreedAt: agreedAt?.toISOString(), avatar: avatarOf(avatar) })
+
+/** K6: a Suggestion row as index.js documents it, read with its child's name. */
+export const asSuggestion = (row) => ({ id: row.id, childId: row.childId, childName: row.child.name, ideaId: row.ideaId, createdAt: row.createdAt.toISOString() })
 
 /** The review on a Proof row, as index.js's Review: present only once the parent has answered. A cheer with no kind and no line is not one. */
 const asReview = (p) => ({

@@ -73,7 +73,7 @@ assert.equal(score([done(2), done(1), done(0)], NOW, rest).streak.week[5].state,
 assert.deepEqual(progress(skipped, NOW, rest).calendar.slice(-3).map((d) => d.state), ['done', 'rest', 'done']) // the calendar shows the same marks
 
 // ------------------------------------------------------------------ each sticker's condition
-assert.equal(STICKERS.length, 14)
+assert.equal(STICKERS.length, 20) // K8: six kind stickers since Phase 6
 assert.ok(STICKERS.every((s) => typeof s.measure === 'string' && s.need > 0)) // a rule is data: a figure and the amount it needs
 assert.deepEqual(earned([]), [])
 assert.deepEqual(earned([task({ due: 0, sent: [0] })]), []) // nothing is earned until a parent approves

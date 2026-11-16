@@ -1,12 +1,13 @@
 import { useEffect, useId, useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
-import { CalendarDays, ChartNoAxesColumn, Gift, House, ListTodo, LogOut, Sprout, Sticker, Users } from 'lucide-react'
+import { CalendarDays, ChartNoAxesColumn, Gift, House, ListTodo, LogOut, Sprout, Sticker, Users, Volume2, VolumeX } from 'lucide-react'
 import * as api from '../api/index.js'
 import { nudge } from '../api/notify.js'
 import { noticeExpiry } from '../hooks/useLoad.js'
 import { homeFor, useSession } from '../store/session.js'
 import { initialOf } from '../utils/format.js'
+import Badge from './Badge.jsx'
 import Logo from './Logo.jsx'
 
 // The page shells. One product at two volumes (DESIGN.md section 11): the parent's shell is
@@ -142,6 +143,32 @@ function SignOut({ className }) {
   )
 }
 
+/** K11: the child's own switch for the reward moment's sound. The name stays "Sound"; the state is the switch's. */
+function SoundSwitch() {
+  const user = useSession((s) => s.user)
+  const setUser = useSession((s) => s.setUser)
+  const [busy, setBusy] = useState(false)
+  const on = user?.sound !== false
+  async function toggle() {
+    setBusy(true)
+    try {
+      setUser(await api.setSound(!on))
+    } catch (error) {
+      noticeExpiry(error) // otherwise the switch stays as it was, which is what it shows
+    }
+    setBusy(false)
+  }
+  return (
+    <button type="button" role="switch" aria-checked={on} className="nav-item w-full" disabled={busy} onClick={toggle}>
+      {on ? <Volume2 className="size-5 shrink-0" aria-hidden="true" /> : <VolumeX className="size-5 shrink-0" aria-hidden="true" />}
+      Sound
+      <span className="type-small muted ml-auto" aria-hidden="true">
+        {on ? 'On' : 'Off'}
+      </span>
+    </button>
+  )
+}
+
 /** The avatar button and the short menu it opens. A native popover: Escape and outside taps close it. */
 function AccountMenu({ items }) {
   const user = useSession((s) => s.user)
@@ -157,11 +184,11 @@ function AccountMenu({ items }) {
       <button
         type="button"
         id={`${id}-button`}
-        className="avatar size-11"
+        className="rounded-full"
         popoverTarget={id}
         aria-label={`Account menu for ${user?.name}`}
       >
-        {initialOf(user?.name)}
+        <Badge avatar={user?.avatar} name={user?.name} className="size-11" />
       </button>
       {createPortal(
         <div id={id} popover="auto" className="menu" onBeforeToggle={place}>
@@ -173,6 +200,7 @@ function AccountMenu({ items }) {
               {label}
             </Link>
           ))}
+          {user?.role === 'child' && <SoundSwitch />}
         </div>,
         document.body,
       )}
@@ -236,8 +264,8 @@ export function ParentShell() {
 
 export function ChildShell() {
   // a result the child has not seen yet: the reward moment is waiting on Today
-  const { results = 0, askedAt } = useCounts()
-  const count = { to: '/child', n: results, askedAt, what: 'new', away: true }
+  const { results = 0, answers = 0, askedAt } = useCounts()
+  const count = { to: '/child', n: results + answers, askedAt, what: 'new', away: true } // K2: answers to requests are news on Today too
   return (
     <div className="min-h-page overflow-x-clip">
       <header className="on-navy growth-band sticky top-(--banner-h) z-10">

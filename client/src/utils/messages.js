@@ -16,6 +16,7 @@ const QUOTA = {
   tasks: 'This child already has 300 tasks that are not approved yet. Approve or delete some, then try again.',
   rewards: 'A family can have up to 50 rewards. Delete one to add another.',
   storage: 'There is no room left for more photos and videos. Send a note instead, and tell a parent.',
+  suggestions: 'You have asked for 3 tasks already. When a parent answers one, you can ask for another.', // K6, a child reads it
   disk: 'This computer is almost out of space, so the file was not saved. Send a note instead, and tell a parent.',
 }
 
