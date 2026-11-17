@@ -1,10 +1,10 @@
 # Phase 9 plan, part 1: Attack it
 
-Written on 16 and 17 November 2026 by the planning session, for the building session. It follows `final-plan.md` section 4. Read that section and section 5 first, then this file. This phase has no questions to ask. Build exactly this, from step 2 on.
+Written on 16 and 17 November 2026 by the planning session, for the building session. On the evening of 17 November a second planning session ran every block again against the committed Phase 8 (`a615f6c`), pinned what Phase 8's routes answer, and wrote part 2. It follows `final-plan.md` section 4. Read that section and section 5 first, then this file. This phase has no questions to ask. Build exactly this, from step 2 on.
 
 This file covers items 1 and 2. Items 3 to 5, the acceptance list and the close are in `phase-9-plan-part-2.md`. **Do not open part 2 until section 7 of this file sends you there.**
 
-**Phase 8 must be built and committed first.** This plan was written before Phase 8's code existed. It names Phase 8's routes and helpers as `phase-8-plan.md` defines them. If one is missing or differs (section 2 checks), stop and report. Do not adapt the plan quietly.
+**Phase 8 is committed** (`a615f6c`, "Phase 8 Completed"), and every block below passed against it. If a name that section 2 checks is missing or differs, the code has moved since then: stop and report. Do not adapt the plan quietly.
 
 ## 0. How to use this plan
 
@@ -14,25 +14,28 @@ This file covers items 1 and 2. Items 3 to 5, the acceptance list and the close 
 
 **What is settled.** Every design choice, name, value and sentence here is decided. Use them as written.
 
-**What is proven.** On 17 November 2026 the planning session ran all of this against the repository at commit `c715b4e` (Node 22.23.2, the database `growkid_test`). It changed nothing in the repository: the code ran from a scratch folder, and `server/src/index.js` and `scripts/verify.mjs` were tried as patched copies.
+**What is proven.** Twice on 17 November 2026, on Node 22.23.2 and the database `growkid_test`, changing nothing in the repository: the code ran from a scratch copy of `server/` with this plan's edits applied by its own commands. First at `c715b4e`, before Phase 8. Then at `a615f6c`, with Phase 8 in.
 
-| What | Outcome on 17 November |
-|---|---|
-| The route sweeps and the token tests (appendix `tokens` and `routes`) | 8 of 8 passed, over 63 routes |
-| `attack.test.js` (appendix `attack`) | 5 of 6 passed. The sixth failed on finding F1 (section 5.1) and nothing else: with that one id left out it passed. |
-| The crafted-file tests (appendix `rules`) | 3 of 3 passed |
-| The stalled-headers test (appendix `boot`), against `index.js` with section 5.4's change | passed: `408` after 20 seconds |
-| A request whose body never finishes, same server | closed after 120.2 seconds with `408` |
-| A connection that sends nothing at all, same server | closed after 15.0 seconds with `408` |
-| The two new `verify.mjs` checks | both pass; each failed when given a pattern that is present |
-| Sign-in timing, 7 tries each | unknown account 262 ms, wrong password 265 ms |
-| The file walkers on the worst 25 MB a caller can send | 201 ms at most (a JPEG whose scan is all `FF`) |
+| What | At `c715b4e` | At `a615f6c` |
+|---|---|---|
+| `security.test.js` with the blocks `tokens` and `routes` | 8 of 8 new tests passed, over 63 routes | 15 of 15, over 69 routes |
+| The guard (section 4, proof 2) | | the probe route failed the first sweep test, naming `GET /zz-phase9-probe` |
+| `attack.test.js` (block `attack`) | 5 of 6: the sixth failed on F1 (section 5.1) and nothing else | 6 of 6 with F1 fixed; without the fix the NUL test fails at `answers seen`, 500 for 204 |
+| `rules.test.js` with block `rules` | 3 of 3 new | 36 of 36 |
+| `boot.test.js` with block `boot` and section 5.4's `index.js` | the new test passed: `408` after 20 seconds | 22 of 22 |
+| A request whose body never finishes (block `stall`) | closed after 120.2 s with `408` | closed after 120.2 s with `408` |
+| A connection that sends nothing at all | closed after 15.0 s with `408` | not rerun |
+| The two new `verify.mjs` checks | both pass; each failed when given a pattern that is present | the same, on the built client |
+| Sign-in timing (block `timing`) | unknown account 262 ms, wrong password 265 ms | interleaved, three runs: the slower case 1.04, 1.10 and 1.11 times the faster, and not always the same case |
+| `/recovery` timing, same block | not built | unknown email, no code and wrong code within 1.01 to 1.03 times of each other, three runs |
+| The file walkers on the worst 25 MB a caller can send | 201 ms at most (a JPEG whose scan is all `FF`) | not rerun |
+| The whole server suite, every edit of this part applied | | 228 of 228 in 485 s; lint clean |
 
-**What was not run,** because it needs Phase 8: the six routes marked "Phase 8" in the `WHO` table, the `moderator()` helper with its code step, the `ModeratorAction` clean-up line, the four rows marked `'4xx'` in the NUL test, and the timing of `/recovery`. Those are predictions. If one fails, that is a finding: record what happened.
+**Nothing in this part is a prediction any more.** At `a615f6c` the four Phase 8 rows of the NUL test answered 401, 403, 403 and 400, and those are now what the test expects. The first draft of `timing.mjs` timed one case after the other, and the later case read up to 28% slower whichever it was, because this machine slows down during a run; the block now interleaves the cases.
 
-**Report only what you ran.** Every number that goes into `final-plan.md` from this phase is one you produced in this session, with the command that produced it. The numbers in the table above are the planning session's, from before Phase 8: never copy them into a report. If an attack was not tried, say "not tried" and why.
+**Report only what you ran.** Every number that goes into `final-plan.md` from this phase is one you produced in this session, with the command that produced it. The numbers in the table above are the planning sessions': never copy them into a report. If an attack was not tried, say "not tried" and why.
 
-**When a proven block fails.** Read the failure before the block. A failure that names a Phase 8 route, field or helper means Phase 8 differs from its plan: stop that item and report. Do not rewrite a proven block to make it pass.
+**When a proven block fails.** Read the failure before the block. Every block passed at `a615f6c`, so a failure means the code has moved since then. If the failure names a route, field or helper, stop that item and report. Do not rewrite a proven block to make it pass.
 
 **Spend tokens on the work, not on reading.**
 - Read each step's "Read first" ranges in one parallel batch, and nothing else. Section 5 says where each defence lives.
@@ -56,7 +59,7 @@ No screen changes in this part, so the Playwright MCP, `impeccable` and `fronten
 
 ## 2. Step 0: orient, check Phase 8, set up
 
-1. `npm run verify` from the repo root. It must be green: Phase 8's item 0 fixed the one failure known on 16 November. If it is red, stop and report.
+1. `npm run verify` from the repo root. It must be green, as it was at `a615f6c`. If it is red, stop and report.
 2. One parallel batch of Greps. Each must find its text. If one does not, stop and report.
 
 | Must exist | Where |
@@ -91,7 +94,7 @@ The id is N1 because A1 to A11 are taken by the backend's assumptions. Nothing c
 
 **Change `server/test/security.test.js`** in this order.
 
-1. Make the imports read exactly this (Phase 8 may already have changed the helpers line; `bcrypt` goes, because the test that used it goes):
+1. Replace lines 1 to 7, the imports, with exactly this. Phase 8's `moderator as newModerator` becomes plain `moderator`, because the test that used the alias is cut in step 3, and the routers and `png` come in for the sweeps:
 
 ```js
 import assert from 'node:assert/strict'
@@ -183,11 +186,11 @@ Run it. All 6 must pass.
 | `a form-encoded, text/plain or multipart body is read as no body…` | The three content types a form on another site can send, each carrying the right sign-in details, a sign-up, a task, a setting and a quest. Nobody is signed in and nothing is stored. |
 | `__proto__ and constructor in a body change no object and no row` | Raw JSON with both keys, to sign-up and to a task. The app runs in the test's own process, so a polluted prototype would show. |
 | `a body that unpacks or nests far past the limit is refused…` | 8 MB of spaces gzipped to a few kB, and 18 kB of nested brackets. |
-| `a NUL and a lone surrogate in any text field or id…` | 40 writes: every text field of every route, every id a body carries, two query strings, and four Phase 8 routes (the `'4xx'` rows). Then every row of the family is read back and holds no NUL. |
+| `a NUL and a lone surrogate in any text field or id…` | 40 writes: every text field of every route, every id a body carries, two query strings, and the four Phase 8 routes. Then every row of the family is read back and holds no NUL. |
 | `no write takes a field it does not name…` | 33 fields a caller has no business sending (`role`, `status`, `tokenVersion`, `pausedAt`, `parentId`, `passwordHash`, `totpSecret`, `recoveryHash`, `keepProofDays`, `reviewBy`, `resolvedAt` and the rest), on 20 writes. Each row is read back with `db` and holds the server's values. |
 | `two uploads at once at the edge of the quota…` | Accepted behaviour, pinned: both may land, the family is over by one file at most, and the next upload is `QUOTA`. |
 
-If a `'4xx'` row answers `5xx`, Phase 8's route has the same fault as F1: fix it the same way, in that route, and say so under "Found and fixed".
+The four Phase 8 rows expect what those routes answered at `a615f6c`: `/recovery` 401 `WRONG_DETAILS`, `/me/recovery` and `/me/export` 403 `WRONG_PASSWORD`, `/settings/keep-proof` 400 `INVALID`. If one answers `5xx` now, the route has F1's fault: fix it the same way, in that route, and say so under "Found and fixed".
 
 Then add the comment that makes the quota race a marked shortcut. In `server/src/routes/tasks.js`, above the line `const held = await db.proof.aggregate(` in `sendProof`:
 
@@ -220,7 +223,7 @@ server.listen(Number(env.PORT), '127.0.0.1', () => console.log(`GrowKid server l
 ```
 
    Phase 8 put its `tidy` timer after this call. Keep it there, untouched.
-2. `server/test/boot.test.js`: add `import { once } from 'node:events'` and `import net from 'node:net'` to its imports, in alphabetical place, then append the test:
+2. `server/test/boot.test.js`: directly below `import { randomUUID } from 'node:crypto'`, add the two lines `import { once } from 'node:events'` and `import net from 'node:net'`, then append the test:
 
 ```bash
 x() { tr -d '\r' < "$1" | awk -v m="<!-- extract: $2 -->" '$0==m{f=1;next} f&&/^```/{if(++c==2)exit;next} f&&c==1'; }
@@ -270,7 +273,7 @@ x phase-9-plan.md timing > "$S/timing.mjs" && (cd server && node --env-file=.env
 (cd client && npm audit 2>&1 | tail -3); (cd server && npm audit 2>&1 | tail -5)
 ```
 
-`timing.mjs` prints the median of 7 tries for sign-in (unknown account, wrong password) and for `/recovery` (unknown email, an account with no code, a wrong code), and for each group how many times slower the slowest is than the fastest. A group passes at 1.25 or less. Over that is a finding: the faster answer skipped a compare, so find the path that returns early.
+`timing.mjs` prints the median of 7 tries, taken in turn, for sign-in (unknown account, wrong password) and for `/recovery` (unknown email, an account with no code, a wrong code), and for each group how many times slower the slowest is than the fastest. A group passes at 1.25 or less. Run it alone: the tests or a build running at the same time skew it. Over 1.25, run it once more. Over 1.25 twice is a finding: the faster answer skipped a compare, so find the path that returns early.
 
 ### 5.6 Every attack, and what holds it
 
@@ -314,7 +317,7 @@ One Grep batch confirms each "exists" test by its opening words; the full `npm r
 | 17 | Two reward requests at once at the edge of the balance | exists: `family.test.js`, `two reward requests at once…` |
 | 18 | A proof sent while the family or the task is deleted | exists: `account.test.js`, `erase waits for a transaction…`; `tasks.test.js`, `a proof sent while the task is deleted…` |
 | 19 | Two uploads at once at the edge of the quota | Accepted and pinned: `attack`, sixth test, and the `ponytail:` comment of 5.2 |
-| 20 | The same recovery code twice at once; the same moderator code twice at once | Phase 8: `T5: two resets at once…`, `T1: a code signs in once…` |
+| 20 | The same recovery code twice at once; the same moderator code twice at once | exists: `trust.test.js`, `T5: two resets at once…`; `account.test.js`, `T1: a code signs in once…` |
 
 **Files**
 
@@ -326,21 +329,21 @@ One Grep batch confirms each "exists" test by its opening words; the full `npm r
 | 24 | An MP4 box of size 0 that is not the last | `rules`, second test: it runs to the end, as the format says, so what follows a `udta` of size 0 is blanked with it. The other order is accepted (section 6). |
 | 25 | A JPEG with a second picture after the first | exists: `rules.test.js`, `JPEG: the stored file ends at the first EOI…` |
 | 26 | A path in the proof id | `routes`, sixth test: the file is opened by the id from the database, never by the text in the address |
-| 27 | A crafted GPS track | Phase 8: `T7: a data track whose samples cannot be found is FILE_TYPE` |
+| 27 | A crafted GPS track | exists: `rules.test.js`, `T7: a data track whose samples cannot be found is FILE_TYPE` |
 | 28 | A proof file opened as its own page | exists: `safety.test.js`, `C4: a proof file carries its own CSP and CORP…` |
 | 29 | A PNG chunk of 4 GB, a WebP whose sizes point past the file, a JPEG segment of length 0, 1 or 65,535, a file of 0 to 4 bytes of each type | `rules`, third test |
-| 30 | A 25 MB file built to make a walker slow | Measured, no test: 201 ms at most on 17 November. The cap on parts (row 22) is what bounds it. Say "measured by the planning session, not rerun". |
+| 30 | A 25 MB file built to make a walker slow | Measured, no test: 201 ms at most on 17 November, before Phase 8 added the MP4 track walk. The cap on parts (row 22) is what bounds it. Say "measured by the planning session before Phase 8, not rerun". |
 
 **Guessing and naming**
 
 | # | Question | Outcome to record |
 |---|---|---|
 | 31 | Does sign-in take the same time for an unknown account and a wrong password? | Your two medians from `timing.mjs`. The test exists: `account.test.js`, `signIn: an unknown account and a wrong password…` |
-| 32 | Does `/recovery` take the same time for an unknown email, an account with no code, and a wrong code? | Your three medians. Not run by the planning session. |
+| 32 | Does `/recovery` take the same time for an unknown email, an account with no code, and a wrong code? | Your three medians from `timing.mjs`. The test exists: `trust.test.js`, `T5: a wrong code, an unknown email, a child's username and an account with no code are the same WRONG_DETAILS…` |
 | 33 | What does sign-up reveal? | `EMAIL_TAKEN`. Accepted (section 6). |
 | 34 | What does adding a child reveal? | `USERNAME_TAKEN`, across families. Accepted. |
 | 35 | What does a moderator's sign-in reveal? | `NEEDS_CODE` says the password was right. Accepted. |
-| 36 | What does `PAUSED` reveal? | Nothing before the right password or code. exists: `safety.test.js` C6; Phase 8 `T5: a paused family is refused…` |
+| 36 | What does `PAUSED` reveal? | Nothing before the right password or code. exists: `safety.test.js` C6; `trust.test.js`, `T5: a paused family is refused…` |
 
 **Slow callers**
 
@@ -388,7 +391,7 @@ Keep a tally for the phase report as you go: attacks tried (the rows of 5.6 you 
 
 ## 7. End of part 1
 
-1. `npm run verify` from the repo root, in full. It must pass with its two new checks. The server tests take about a minute longer than before.
+1. `npm run verify` from the repo root, in full. It must pass with its two new checks. The server tests take about two minutes longer than before: 485 s for 228 tests at the planning run.
 2. In `final-plan.md` section 6, Phase 9: tick items 1 and 2. Move nothing.
 3. If the context is light, Read `phase-9-plan-part-2.md` and go on. If it is heavy, stop here: update the memory note `growkid-final-plan` ("Phase 9 part 1 built: items 1 and 2; F1 fixed; N1 added"), and report "Phase 9, part 1" in `final-plan.md` section 4's format, with the tally. The next session reads `final-plan.md` sections 4 and 5, sections 0 and 1 of this file, and then part 2. It does not rerun anything in this file.
 
@@ -846,10 +849,10 @@ test('a NUL and a lone surrogate in any text field or id are never a 500, and no
     await is(200, 'history paging', mom.api.get('/tasks/history?offset=%00&limit=%ED%A0%80'))
     await is(200, 'my proofs paging', kid.get('/proofs/mine?offset=%00&limit=a%00b'))
     // Phase 8's routes
-    await is('4xx', 'recovery', as(server.base).post('/recovery', { email: DIRTY, code: DIRTY, password: DIRTY }))
-    await is('4xx', 'a new recovery code', mom.api.post('/me/recovery', { password: DIRTY }))
-    await is('4xx', 'export', mom.api.post('/me/export', { password: DIRTY }))
-    await is('4xx', 'keep proof', mom.api.put('/settings/keep-proof', { days: DIRTY }))
+    await is(401, 'recovery', as(server.base).post('/recovery', { email: DIRTY, code: DIRTY, password: DIRTY }))
+    await is(403, 'a new recovery code', mom.api.post('/me/recovery', { password: DIRTY }))
+    await is(403, 'export', mom.api.post('/me/export', { password: DIRTY }))
+    await is(400, 'keep proof', mom.api.put('/settings/keep-proof', { days: DIRTY }))
 
     const ours = { OR: [{ id: mom.user.id }, { parentId: mom.user.id }] }
     const stored = await Promise.all([
@@ -1134,41 +1137,47 @@ const server = await start()
 const mom = await family(server.base)
 const TRIES = 7
 const median = (list) => list.toSorted((a, b) => a - b)[Math.floor(list.length / 2)]
-async function time(label, route, body) {
-  const api = as(server.base) // its own address, so no limit fills
-  const took = []
-  let status
-  for (let i = 0; i < TRIES; i++) {
-    const began = performance.now()
-    status = (await api.post(route, body)).status
-    took.push(performance.now() - began)
+/**
+ * Tries each case TRIES times, interleaved: every round tries each case once, starting one further along each time, so a machine
+ * that slows down during the run slows every case alike. (Timed one after the other, the later case read up to 28% slower on
+ * 17 November, whichever it was.) Each case has its own address, so no limit fills.
+ */
+async function compare(name, cases) {
+  const apis = cases.map(() => as(server.base))
+  const took = cases.map(() => [])
+  const status = []
+  for (let round = 0; round < TRIES; round++) {
+    for (let k = 0; k < cases.length; k++) {
+      const i = (k + round) % cases.length
+      const [, route, body] = cases[i]
+      const began = performance.now()
+      status[i] = (await apis[i].post(route, body)).status
+      took[i].push(performance.now() - began)
+    }
   }
-  console.log(`${label}: ${Math.round(median(took))} ms (answer ${status})`)
-  return median(took)
+  const medians = took.map(median)
+  cases.forEach(([label], i) => console.log(`${label}: ${Math.round(medians[i])} ms (answer ${status[i]})`))
+  console.log(`${name}: the slowest is ${(Math.max(...medians) / Math.min(...medians)).toFixed(2)} times the fastest (pass when 1.25 or less)`)
 }
-const within = (name, list) => console.log(`${name}: the slowest is ${(Math.max(...list) / Math.min(...list)).toFixed(2)} times the fastest (pass when 1.25 or less)`)
 
 const real = console.warn
 console.warn = () => {} // the security log's lines
 try {
-  within('sign-in', [
-    await time('sign-in, unknown account', '/session', { identifier: `nobody-${Date.now()}@example.com`, password: 'not-the-password' }),
-    await time('sign-in, wrong password', '/session', { identifier: mom.email, password: 'not-the-password' }),
+  await compare('sign-in', [
+    ['sign-in, unknown account', '/session', { identifier: `nobody-${Date.now()}@example.com`, password: 'not-the-password' }],
+    ['sign-in, wrong password', '/session', { identifier: mom.email, password: 'not-the-password' }],
   ])
-  if ((await as(server.base).post('/recovery', {})).status === 404) console.log('recovery: no such route (Phase 8 is not built)')
-  else {
-    const bare = await family(server.base)
-    await db.user.update({ where: { id: bare.user.id }, data: { recoveryHash: null } })
-    const guess = { code: 'ABCDEFGHIJKLMNOP', password: 'another-pass-1' }
-    try {
-      within('recovery', [
-        await time('recovery, unknown email', '/recovery', { ...guess, email: `nobody-${Date.now()}@example.com` }),
-        await time('recovery, an account with no code', '/recovery', { ...guess, email: bare.email }),
-        await time('recovery, wrong code', '/recovery', { ...guess, email: mom.email }),
-      ])
-    } finally {
-      await bare.api.post('/me/delete', { password: bare.password })
-    }
+  const bare = await family(server.base)
+  await db.user.update({ where: { id: bare.user.id }, data: { recoveryHash: null } })
+  const guess = { code: 'ABCDEFGHIJKLMNOP', password: 'another-pass-1' }
+  try {
+    await compare('recovery', [
+      ['recovery, unknown email', '/recovery', { ...guess, email: `nobody-${Date.now()}@example.com` }],
+      ['recovery, an account with no code', '/recovery', { ...guess, email: bare.email }],
+      ['recovery, wrong code', '/recovery', { ...guess, email: mom.email }],
+    ])
+  } finally {
+    await bare.api.post('/me/delete', { password: bare.password })
   }
 } finally {
   console.warn = real

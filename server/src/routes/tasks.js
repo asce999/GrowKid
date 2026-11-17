@@ -136,6 +136,8 @@ const upload = (req, res, next) => parse(req, res, (err) => next(err && !(err in
 // L8: the children whose upload is being received now. A proof is held in memory and stripping copies it, so a slow upload keeps
 // up to 50 MB for as long as the request lasts: at most 4 at once, and 1 per child.
 const receiving = new Set()
+/** How many uploads are being received now. Read only by the tests, which wait on it instead of on a timer. */
+export const uploadsInFlight = () => receiving.size
 
 /**
  * Runs before multer, so a refused upload writes nothing: a child's own task, still open (rule 2), then a free slot (L8), which is
