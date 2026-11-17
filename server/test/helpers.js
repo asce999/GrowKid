@@ -2,7 +2,9 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { once } from 'node:events'
 import { mkdir } from 'node:fs/promises'
+import bcrypt from 'bcryptjs'
 import { db } from '../src/db.js'
+import { codeAt, newSecret, stepAt } from '../src/totp.js'
 
 /** Starts the real app on a free port. Returns the API base URL (ending in /api) and close(). */
 export async function start() {
@@ -71,5 +73,19 @@ export async function family(base, details = {}) {
   const api = as(base)
   const res = await api.post('/parents', parent)
   assert.equal(res.status, 201)
-  return { api, user: res.body, ...parent }
+  const { recoveryCode, ...user } = res.body
+  return { api, user, recoveryCode, ...parent }
+}
+
+/** A moderator made straight in the database (the script has its own test), with a secret. signIn() gives a signed-in client. */
+export async function moderator(base) {
+  const email = `mod-${randomUUID()}@example.com`
+  const secret = newSecret()
+  const { id } = await db.user.create({ data: { role: 'moderator', name: 'Mod', email, passwordHash: await bcrypt.hash('moderator-pass', 4), totpSecret: secret } })
+  const signIn = async (api = as(base)) => {
+    await db.user.update({ where: { id }, data: { totpLastStep: null } })
+    assert.equal((await api.post('/session', { identifier: email, password: 'moderator-pass', code: codeAt(secret, stepAt()) })).status, 200)
+    return api
+  }
+  return { id, email, secret, password: 'moderator-pass', signIn, api: await signIn() }
 }

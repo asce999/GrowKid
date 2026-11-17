@@ -10,8 +10,9 @@ import bcrypt from 'bcryptjs'
 import { db } from '../src/db.js'
 import { sweepOrphans } from '../src/files.js'
 import { PRIVACY_VERSION } from '../src/rules.js'
+import { codeAt, stepAt } from '../src/totp.js'
 import { pdf, png } from './fixtures.js'
-import { as, family, start } from './helpers.js'
+import { as, family, moderator, start } from './helpers.js'
 
 /** Final plan Phase 3: consent (C8), pausing a family (C6), screening every note (C7), the file headers (C2, C4), files left behind (C5) and the security log (C9). */
 
@@ -249,7 +250,7 @@ test('C5: sweepOrphans removes only settled id-shaped files that no proof with a
 
 // ------------------------------------------------------------------ C9, the security log
 
-test('C9: a limit that trips and a moderator signing in each log one line holding no email, username or address', async () => {
+test('C9: a limit that trips, a moderator\'s refused code and a moderator signing in each log one line holding no email, username or address', async () => {
   const ip = '10.77.66.55'
   const email = `nobody-${randomUUID()}@example.com`
   const guesser = as(server.base, { ip })
@@ -259,12 +260,15 @@ test('C9: a limit that trips and a moderator signing in each log one line holdin
   })
   assert.deepEqual(lines, ['security limit:sign-in POST /api/session']) // once per trip, however many tries follow
 
-  const modEmail = `mod-${randomUUID()}@example.com`
-  const mod = await db.user.create({ data: { role: 'moderator', name: 'Mod', email: modEmail, passwordHash: await bcrypt.hash('moderator-pass', 4), createdAt: new Date() } })
+  const mod = await moderator(server.base)
   try {
-    const signIn = await logged(async () => assert.equal((await as(server.base, { ip }).post('/session', { identifier: modEmail, password: 'moderator-pass' })).status, 200))
+    const near = [-1, 0, 1].map((d) => codeAt(mod.secret, stepAt() + d))
+    const wrong = ['000000', '111111', '222222', '333333'].find((code) => !near.includes(code))
+    const refusedCode = await logged(async () => assert.equal((await as(server.base, { ip }).post('/session', { identifier: mod.email, password: mod.password, code: wrong })).status, 401))
+    assert.deepEqual(refusedCode, ['security moderator-code-refused POST /api/session']) // T1
+    const signIn = await logged(() => mod.signIn(as(server.base, { ip })))
     assert.deepEqual(signIn, ['security moderator-sign-in POST /api/session'])
-    for (const line of [...lines, ...signIn]) for (const secret of [email, modEmail, ip, 'nobody', 'Mod']) assert.equal(line.includes(secret), false)
+    for (const line of [...lines, ...refusedCode, ...signIn]) for (const secret of [email, mod.email, ip, 'nobody', 'Mod']) assert.equal(line.includes(secret), false)
   } finally {
     await db.user.delete({ where: { id: mod.id } })
   }

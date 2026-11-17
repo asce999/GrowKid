@@ -154,7 +154,10 @@ export default function Growth() {
           <h2 id="my-proofs-title" className="type-subheading">
             My proofs
           </h2>
-          <p className="type-small muted mt-1">Photos and videos from your approved tasks, newest first.</p>
+          <p className="type-small muted mt-1">
+            Photos and videos from your approved tasks, newest first. GrowKid removes photos and videos a while after a task is
+            approved. Your parent chooses how long.
+          </p>
           <ul className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
             {photos.map((photo) => (
               <li key={photo.id}>

@@ -99,8 +99,11 @@ const failedOnly = { skipSuccessfulRequests: true }
 // ponytail: in-memory counters, so they restart with the server and are per process; fine for one server on one machine.
 /** 50 failed sign-ins per 15 minutes for one address, whatever the identifier: stops one address guessing across many usernames. */
 export const signInIpLimit = limit('sign-in-address', 15, 50, (req) => ipKeyGenerator(req.ip), failedOnly)
-/** 10 failed sign-ins per 15 minutes for one address and one identifier, so one child's typos do not lock the rest of a school out. */
-const identifierOf = (req) => text(req.body?.identifier).trim().toLowerCase().slice(0, 100)
+/**
+ * 10 failed sign-ins per 15 minutes for one address and one identifier, so one child's typos do not lock the rest of a school out.
+ * T5: a reset by recovery code names the account by `email`, so it shares these limits and their counts.
+ */
+const identifierOf = (req) => text(req.body?.identifier ?? req.body?.email).trim().toLowerCase().slice(0, 100)
 export const signInLimit = limit('sign-in', 15, 10, (req) => `${ipKeyGenerator(req.ip)}|${identifierOf(req)}`, failedOnly)
 /**
  * L1: 30 failed sign-ins per hour for one identifier, whatever the address, so a known username cannot be tried from many addresses

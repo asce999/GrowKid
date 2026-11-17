@@ -8,7 +8,9 @@ import { KINDS, STICKERS, approvedInWeek, balanceOf, bestWeekOf, dayKey, progres
 // Rule 5, proof files: one photo or video of up to 25 MB, or a note with no file (C2: no PDF). The six types are files.js's sniff table.
 export const MAX_FILE_BYTES = 25 * 1024 * 1024
 /** C8: the version of Safety and privacy a consent is given under: the date the page last changed. Privacy.jsx shows the same date. */
-export const PRIVACY_VERSION = '2026-11-16'
+export const PRIVACY_VERSION = '2026-11-17'
+/** T4: how many days a family may keep a proof's file after its task is approved. */
+export const KEEP_PROOF_DAYS = [30, 90, 365]
 export const CATEGORIES = KINDS
 // Rule 20, cheers: the six kinds a parent can approve with.
 export const CHEER_KINDS = ['proud', 'tidy', 'brave', 'clever', 'kind', 'effort']

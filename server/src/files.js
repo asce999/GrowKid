@@ -1,7 +1,8 @@
-import { readdir, stat, statfs, unlink, writeFile } from 'node:fs/promises'
+import { readFile, readdir, stat, statfs, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { db } from './db.js'
 import { ApiError, refuse } from './errors.js'
+import { KEEP_PROOF_DAYS } from './rules.js'
 
 /** Proof files (rules 5 and 16, assumptions A5 and A6): what a file is, what it may carry, where it lives and how it is served. */
 
@@ -157,17 +158,28 @@ function boxes(b, from, to, count) {
 }
 
 /**
+ * T7: the handler kinds of a track that holds no picture or sound, only data recorded beside them: an action camera's GPS route,
+ * timed text, and subtitles (sbtl, subt), where drones and dash cameras often write their route.
+ */
+const DATA_TRACKS = ['meta', 'text', 'gpmd', 'sbtl', 'subt']
+
+/**
  * A5: only a file with a video track is a video. moov/trak/mdia/hdlr names each track's kind: 12 bytes after the `hdlr` tag come the
  * version and flags, pre_defined, then the handler type, which is `vide` for video. M4A audio and AVIF image sequences have none.
  * A6: renames the udta and meta boxes inside moov and inside each trak (C3), and the udta, meta and uuid boxes at the top of the file,
  * to `free` and blanks what they held: same size, and players skip a free box. That is where phones put the place the video was filmed.
  * C3: zeroes the creation and modification times in mvhd, tkhd and mdhd.
- * ponytail: per-track timed GPS (the metadata tracks of action cameras) is not stripped.
+ * T7: a data track's samples are blanked where they lie, found through its sample table (stsz the sizes, stsc how many to a chunk,
+ * stco or co64 where each chunk starts), and then the track itself becomes a free box. Everything is read from `b` and written to
+ * `out`, so blanking never changes what is parsed. A data track whose table is missing or runs past the file, or a fragmented file
+ * (moof) with a data track, whose samples the table does not list, is FILE_TYPE: nothing is stored with a route in it. `budget`
+ * bounds the work: every byte is blanked at most once in all, however the tables are written.
  */
 function stripBoxes(b) {
   const count = parts()
   const inside = (parents) => parents.flatMap((p) => boxes(b, p.at + p.head, p.at + p.size, count)) // each level read once, so counted once
   const named = (list, ...types) => list.filter((box) => types.includes(box.type))
+  const within = (list, parent) => list.filter((box) => box.at > parent.at && box.at < parent.at + parent.size)
   const top = boxes(b, 0, b.length, count)
   const moov = named(top, 'moov')
   const inMoov = inside(moov)
@@ -176,9 +188,42 @@ function stripBoxes(b) {
   const mdias = named(inTraks, 'mdia')
   const inMdias = inside(mdias)
   const handlers = named(inMdias, 'hdlr')
-  if (moov.length === 0 || !handlers.some((box) => box.size >= box.head + 12 && ascii(b, box.at + box.head + 8, 4) === 'vide')) bad()
+  const kindOf = (box) => (box.size >= box.head + 12 ? ascii(b, box.at + box.head + 8, 4) : '')
+  if (moov.length === 0 || !handlers.some((box) => kindOf(box) === 'vide')) bad()
   const out = Buffer.from(b)
-  for (const box of [...named(top, 'udta', 'meta', 'uuid'), ...named(inMoov, 'udta', 'meta'), ...named(inTraks, 'udta', 'meta')]) {
+
+  const dataTraks = traks.filter((trak) => within(handlers, trak).some((box) => DATA_TRACKS.includes(kindOf(box))))
+  if (dataTraks.length && named(top, 'moof').length) bad()
+  const u32 = (at) => b.readUInt32BE(at)
+  let budget = b.length
+  for (const trak of dataTraks) {
+    const tables = inside(named(inside(named(within(inMdias, trak), 'minf')), 'stbl'))
+    const [stsz] = named(tables, 'stsz')
+    const [stsc] = named(tables, 'stsc')
+    const [stco] = named(tables, 'stco', 'co64')
+    if (!stsz || !stsc || !stco) bad()
+    const z = stsz.at + stsz.head // version and flags, one size for all (or 0), the count, then a size each
+    const c = stsc.at + stsc.head // version and flags, the count, then (first chunk, samples per chunk, description) each
+    const o = stco.at + stco.head // version and flags, the count, then an offset each
+    const wide = stco.type === 'co64'
+    if (stsz.size < stsz.head + 12 || stsc.size < stsc.head + 8 || stco.size < stco.head + 8) bad()
+    const [fixed, samples, runs, chunks] = [u32(z + 4), u32(z + 8), u32(c + 4), u32(o + 4)]
+    if ((fixed === 0 && stsz.size < stsz.head + 12 + samples * 4) || stsc.size < stsc.head + 8 + runs * 12 || stco.size < stco.head + 8 + chunks * (wide ? 8 : 4)) bad()
+    let sample = 0
+    let run = 0
+    for (let chunk = 0; chunk < chunks; chunk++) {
+      while (run + 1 < runs && u32(c + 8 + (run + 1) * 12) <= chunk + 1) run++ // the last run that starts at or before this chunk
+      const perChunk = runs ? u32(c + 8 + run * 12 + 4) : 0
+      let length = 0
+      // stops once the chunk is longer than the file, so a table that claims billions of samples of one size cannot stall the server
+      for (let i = 0; i < perChunk && sample < samples && length <= b.length; i++, sample++) length += fixed || u32(z + 12 + sample * 4)
+      const from = wide ? Number(b.readBigUInt64BE(o + 8 + chunk * 8)) : u32(o + 8 + chunk * 4)
+      if (from + length > b.length || (budget -= length) < 0) bad()
+      out.fill(0, from, from + length)
+    }
+  }
+
+  for (const box of [...named(top, 'udta', 'meta', 'uuid'), ...named(inMoov, 'udta', 'meta'), ...named(inTraks, 'udta', 'meta'), ...dataTraks]) {
     out.write('free', box.at + 4, 'latin1')
     out.fill(0, box.at + box.head, box.at + box.size) // the rename alone would leave the place name readable inside the file
   }
@@ -256,6 +301,44 @@ export async function removeFiles(proofIds) {
     if (result.status === 'rejected' && result.reason?.code !== 'ENOENT') console.error('could not remove the file of proof', proofIds[i])
   })
 }
+
+/** T4: at most this many files go per setting in one run; the next run, a day later or at the next start, takes the rest. */
+const MOST_REMOVED = 1000
+
+/**
+ * T4: deletes the file of every proof whose task was approved longer ago than its family keeps proof files, and marks the proof
+ * removed; the row, the note and the review stay. The file goes first and the mark second, so a run that stops between them is put
+ * right by the next: the proof is still unmarked, its file is already gone, and it is marked then. A file that will not unlink stays
+ * unmarked and is tried again. `time` is the real time, never the development clock: a clock moved a year ahead would delete every
+ * family's files for good. Returns how many were removed.
+ * ponytail: 1,000 per setting per run; raise it or loop if a server ever holds more old files than that.
+ */
+export async function removeOldProofFiles(time) {
+  let removed = 0
+  for (const days of KEEP_PROOF_DAYS) {
+    const before = new Date(+time - days * 86_400_000)
+    const old = await db.proof.findMany({
+      where: { fileType: { not: null }, removedAt: null, task: { status: 'approved', child: { parent: { keepProofDays: days } }, proofs: { some: { result: 'approved', reviewedAt: { lt: before } } } } },
+      select: { id: true },
+      orderBy: { id: 'asc' },
+      take: MOST_REMOVED,
+    })
+    const gone = []
+    for (const { id } of old) {
+      try {
+        await unlink(stored(id))
+        gone.push(id)
+      } catch (error) {
+        if (error.code === 'ENOENT') gone.push(id)
+      }
+    }
+    removed += (await db.proof.updateMany({ where: { id: { in: gone }, removedAt: null }, data: { removedAt: time } })).count
+  }
+  return removed
+}
+
+/** T6: a kept proof's bytes, for the family's export. */
+export const readProofFile = (id) => readFile(stored(id))
 
 /**
  * Serves a proof's file. res.sendFile answers Range requests, which video needs. `root` keeps send's dotfile rule from

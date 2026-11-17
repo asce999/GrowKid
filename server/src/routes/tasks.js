@@ -23,7 +23,7 @@ export function visible(req) {
 }
 
 /** A whole number from a query string, or the fallback. */
-const number = (value, fallback) => (/^\d{1,6}$/.test(value ?? '') ? Number(value) : fallback)
+export const number = (value, fallback) => (/^\d{1,6}$/.test(value ?? '') ? Number(value) : fallback)
 
 /** One task this user may see, with its proofs, or NOT_FOUND. */
 const visibleTask = async (req, id) =>
@@ -168,8 +168,9 @@ tasks.post('/tasks/:id/proofs', proofLimit, mayReceiveProof, upload, async (req,
     const type = sniff(file.buffer) ?? refuse('FILE_TYPE')
     const bytes = strip(file.buffer, type)
     Object.assign(proof, { fileName: NAMES[type], fileType: type, fileSize: bytes.length }) // C3: never the device's name
-    // L6 and L9, before anything is written: the family's files with this one, then the room left on the drive
-    const held = await db.proof.aggregate({ _sum: { fileSize: true }, where: { task: { child: { parentId: req.user.parentId } } } })
+    // L6 and L9, before anything is written: the family's files with this one, then the room left on the drive. T4: a file
+    // removed for age no longer takes room.
+    const held = await db.proof.aggregate({ _sum: { fileSize: true }, where: { removedAt: null, task: { child: { parentId: req.user.parentId } } } })
     if ((held._sum.fileSize ?? 0) + bytes.length > STORAGE_BYTES) refuse('QUOTA', { quota: 'storage' })
     if (!(await hasRoom(process.env.UPLOAD_DIR, bytes.length, FREE_BYTES))) refuse('QUOTA', { quota: 'disk' })
     await saveFile(id, bytes)
@@ -194,12 +195,13 @@ tasks.post('/tasks/:id/proofs', proofLimit, mayReceiveProof, upload, async (req,
 
 /**
  * listMyProofs (K5): the signed-in child's approved photos and videos, newest approval first, `limit` (1 to 24, default 24) from
- * `offset`. Only once Today has shown the approval (rule 13), and only proofs that still have a file; a PDF is left out.
+ * `offset`. Only once Today has shown the approval (rule 13), and only proofs that still have a file: a PDF is left out, and so
+ * is a file removed for age (T4).
  */
 tasks.get('/proofs/mine', async (req, res) => {
   const me = only(req, 'child')
   const rows = await db.proof.findMany({
-    where: { result: 'approved', task: { childId: me.id, resultSeen: true }, OR: [{ fileType: { startsWith: 'image/' } }, { fileType: { startsWith: 'video/' } }] },
+    where: { result: 'approved', removedAt: null, task: { childId: me.id, resultSeen: true }, OR: [{ fileType: { startsWith: 'image/' } }, { fileType: { startsWith: 'video/' } }] },
     include: { task: { select: { title: true } } },
     orderBy: [{ reviewedAt: 'desc' }, { id: 'desc' }],
     skip: number(req.query.offset, 0),
@@ -218,7 +220,7 @@ tasks.get('/proofs/mine', async (req, res) => {
 
 /** The proof file, to the task's child and that child's parent only (A5). A moderator is NOT_ALLOWED, a signed-out visitor NOT_SIGNED_IN. */
 tasks.get('/proofs/:id/file', async (req, res) => {
-  const proof = await db.proof.findFirst({ where: { id: text(req.params.id), fileType: { not: null }, task: visible(req) } })
+  const proof = await db.proof.findFirst({ where: { id: text(req.params.id), fileType: { not: null }, removedAt: null, task: visible(req) } })
   if (!proof) refuse('NOT_FOUND')
   await sendProofFile(res, proof)
 })

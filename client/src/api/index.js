@@ -27,6 +27,7 @@
  * @property {string} [fileName]
  * @property {string} [fileType]  the MIME type: image/... or video/...; application/pdf only for a PDF sent before PDFs were dropped (sitemap rule 5, C2), which downloads
  * @property {number} [fileSize]  in bytes
+ * @property {{ at: string, afterDays?: number }} [removed]  the file was deleted for age (T4); fileUrl is then absent
  * @property {string} sentAt      ISO time
  * @property {boolean} late       sent after the task's due time
  * @property {Review} [review]    absent while the proof waits for a parent
@@ -135,6 +136,7 @@
  * @property {{ note: string, at: string }} [resolution]  the moderator's answer, once resolved
  * @property {boolean} [senderGone]  true on a kept report whose sender has since been deleted; the
  *   moderator's copy only. Answering it deletes it, because nobody is left to read the answer
+ * @property {boolean} [paused]  the moderator's copy only: the sender's family is paused (T2)
  *
  * @typedef {'proud' | 'tidy' | 'brave' | 'clever' | 'kind' | 'effort'} CheerKind
  * @typedef {{ kind: CheerKind | null, line: string }} Cheer  a parent's words with an approval
@@ -234,7 +236,9 @@ export const getSession = () => call('get', '/session')
  * Signs in a parent or moderator by email, or a child by username.
  * Rejects WRONG_DETAILS whether the account or the password is the wrong part, TOO_MANY after
  * too many wrong tries, and PAUSED, after the right password, for a family paused while a report is looked at (C6).
- * @type {(details: { identifier: string, password: string }) => Promise<User>}
+ * T1: a moderator also sends `code`, the 6 digits from their authenticator app. After the right password it rejects NEEDS_CODE
+ * when the code is missing, and NEEDS_CODE with fields.code 'wrong' when it does not match or was used already.
+ * @type {(details: { identifier: string, password: string, code?: string }) => Promise<User>}
  */
 export const signIn = (details) => call('post', '/session', details)
 
@@ -244,9 +248,22 @@ export const signIn = (details) => call('post', '/session', details)
  * Rejects EMAIL_TAKEN, TOO_MANY, or INVALID with fields name, email (format), password (8 or more;
  * 'common' or 'personal' when it is easy to guess), country ('required': not one of the countries) or
  * consent ('required' unless it is true: the parent's tick, C8).
- * @type {(details: { name: string, email: string, password: string, country: string, consent: boolean }) => Promise<User>}
+ * T5: it resolves with the parent's recovery code too, 16 letters and digits. This is the only time the code is sent; the server
+ * keeps only its hash.
+ * @type {(details: { name: string, email: string, password: string, country: string, consent: boolean }) => Promise<User & { recoveryCode: string }>}
  */
 export const signUp = (details) => call('post', '/parents', details)
+
+/**
+ * Sets a new password for a parent who forgot theirs, with their email and recovery code (T5). It signs every device out and uses
+ * the code up; the parent then signs in. Rejects WRONG_DETAILS whether the email, the code or the account is the wrong part,
+ * PAUSED for a family paused while a report is looked at, TOO_MANY after too many tries, and INVALID with fields.password
+ * (8 or more; 'common' or 'personal' when it is easy to guess).
+ * @type {(details: { email: string, code: string, password: string }) => Promise<void>}
+ */
+export const resetPassword = async (details) => {
+  await call('post', '/recovery', details)
+}
 
 /**
  * Every country a family can be in, with the time zone its days are counted in, sorted by name.
@@ -328,6 +345,13 @@ export const changePassword = async (passwords) => {
 }
 
 /**
+ * Makes the signed-in parent a new recovery code, behind their password (T5). The one before stops working. Shown once: the
+ * server keeps only its hash. Rejects WRONG_PASSWORD, and TOO_MANY after too many tries.
+ * @type {(password: string) => Promise<{ recoveryCode: string }>}
+ */
+export const makeRecoveryCode = (password) => call('post', '/me/recovery', { password })
+
+/**
  * Signs the parent out on every other device; this one stays signed in (rule 26).
  * @type {() => Promise<void>}
  */
@@ -345,6 +369,29 @@ export const endOtherSessions = async () => {
  */
 export const deleteFamily = async (password) => {
   await call('post', '/me/delete', { password })
+}
+
+/**
+ * Downloads a copy of the family's data as growkid-family.zip (T6): family.json and the proof files still kept. Rejects
+ * WRONG_PASSWORD, and TOO_MANY after too many tries. No timeout: it takes as long as the files take. The download happens here,
+ * because only this folder may hold the file.
+ * @type {(password: string) => Promise<void>}
+ */
+export const exportFamily = async (password) => {
+  let blob
+  try {
+    blob = (await http.post('/me/export', { password }, { responseType: 'blob', timeout: 0 })).data
+  } catch (error) {
+    const sent = error?.response?.data
+    if (sent instanceof Blob) error.response.data = await sent.text().then(JSON.parse).catch(() => ({})) // a refusal arrives as a blob too
+    throw toApiError(error)
+  }
+  const url = URL.createObjectURL(blob)
+  const link = Object.assign(document.createElement('a'), { href: url, download: 'growkid-family.zip' })
+  document.body.append(link)
+  link.click()
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 
 // ------------------------------------------------------------------ tasks and proof
@@ -692,7 +739,9 @@ export const getLeaderboard = () => call('get', '/leaderboard')
 
 /**
  * The signed-in parent's settings. The leaderboard is off until they turn it on.
- * @typedef {{ leaderboard: boolean, country: string }} Settings  country is a code from listCountries
+ * @typedef {{ leaderboard: boolean, country: string, keepProofDays: 30 | 90 | 365, recovery: boolean }} Settings  country is a code
+ *   from listCountries; keepProofDays is how long a proof's file is kept after its task is approved (T4); recovery is whether the
+ *   parent has a recovery code (T5)
  * @type {() => Promise<Settings>}
  */
 export const getSettings = () => call('get', '/settings')
@@ -709,6 +758,13 @@ export const setLeaderboard = (on) => call('put', '/settings', { leaderboard: on
  * @type {(country: string) => Promise<Settings>}
  */
 export const setCountry = (country) => call('put', '/settings/country', { country })
+
+/**
+ * A parent chooses how long a proof's photo or video is kept after its task is approved: 30, 90 or 365 days (T4). A shorter time
+ * deletes older files within a day. Rejects INVALID with fields.days.
+ * @type {(days: 30 | 90 | 365) => Promise<Settings>}
+ */
+export const setKeepProofDays = (days) => call('put', '/settings/keep-proof', { days })
 
 // ------------------------------------------------------------------ reports
 
@@ -729,11 +785,15 @@ export const sendReport = (report) => call('post', '/reports', report)
  */
 export const listMyReports = () => call('get', '/reports/mine')
 
+/** T3: how many waiting reports the moderator's list holds at a time. */
+export const REPORTS_PAGE = 200
+
 /**
- * The reports still waiting, oldest first. Moderator only: rejects NOT_ALLOWED for anyone else.
- * @type {() => Promise<Report[]>}
+ * The reports still waiting, oldest first, REPORTS_PAGE of them from `offset`, and how many wait in all (T3). Moderator only:
+ * rejects NOT_ALLOWED for anyone else.
+ * @type {(offset?: number) => Promise<{ waiting: number, reports: Report[] }>}
  */
-export const listReports = () => call('get', '/reports')
+export const listReports = (offset = 0) => call('get', `/reports?offset=${offset}`)
 
 /**
  * The moderator answers a report and closes it. The answer is shown to whoever sent the report.
@@ -741,10 +801,24 @@ export const listReports = () => call('get', '/reports')
  * sender and their family have since been deleted, the report is deleted too, because nobody is
  * left to read the answer; the call still returns it, answered.
  * Rejects INVALID with fields.note ('required', or 'length' over 500 characters), LOCKED when
- * the report is already resolved, and NOT_FOUND.
+ * the report is already resolved, LOCKED also while the sender's family is paused, and NOT_FOUND.
  * @type {(id: string, note: string) => Promise<Report>}
  */
 export const resolveReport = (id, note) => call('post', `/reports/${at(id)}/resolve`, { note })
+
+/**
+ * The moderator pauses the family of a report's sender (T2): the parent and every child are signed out everywhere and cannot sign
+ * in until it is unpaused. Nothing of theirs is deleted or changed. Rejects NOT_FOUND when the report or its sender is gone.
+ * @type {(id: string) => Promise<Report>}
+ */
+export const pauseFamily = (id) => call('post', `/reports/${at(id)}/pause`)
+
+/**
+ * The moderator unpauses the family of a report's sender (T2): they can sign in again with the same passwords. Rejects NOT_FOUND
+ * when the report or its sender is gone.
+ * @type {(id: string) => Promise<Report>}
+ */
+export const unpauseFamily = (id) => call('post', `/reports/${at(id)}/unpause`)
 
 // ------------------------------------------------------------------ not part of the real API
 
@@ -758,7 +832,6 @@ export const listDemoSignIns = async () =>
         { who: 'Meera Joshi (parent)', identifier: 'meera@example.com', password: 'growkid-demo' },
         { who: 'Aarav (child)', identifier: 'aarav', password: 'plants42' },
         { who: 'Diya (child)', identifier: 'diya', password: 'books77' },
-        { who: 'Moderator (moderator)', identifier: 'moderator@example.com', password: 'growkid-demo' },
       ]
     : []
 

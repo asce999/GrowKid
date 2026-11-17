@@ -7,6 +7,7 @@ export const STATUS = {
   SCREENED: 400,
   WRONG_DETAILS: 401,
   NOT_SIGNED_IN: 401,
+  NEEDS_CODE: 401, // T1: a moderator's password was right; the authenticator's code is missing or wrong (fields.code 'wrong')
   WRONG_PASSWORD: 403,
   NOT_ALLOWED: 403,
   PAUSED: 403, // C6: sign-in to a family paused while a report is looked at

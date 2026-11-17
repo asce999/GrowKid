@@ -74,6 +74,10 @@ model User {
   agreedAt       DateTime? // K7: when the child agreed to the family agreement; a parent's "Ask again" clears it
   avatar         String? // K10: a child's badge, "<colour>:<stickerId>", both from fixed lists
   sound          Boolean         @default(true) // K11: tones and vibration in the reward moment
+  totpSecret     String? // T1: a moderator's authenticator secret, base32; never leaves the server
+  totpLastStep   Int? // T1: the last 30-second step a code was accepted for, so a code works once
+  recoveryHash   String? // T5: a parent's recovery code, hashed as a password is
+  keepProofDays  Int             @default(90) // T4: a parent's setting, 30, 90 or 365
   parentId       String?
   parent         User?           @relation("Family", fields: [parentId], references: [id], onDelete: Cascade)
   children       User[]          @relation("Family")
@@ -152,6 +156,7 @@ model Proof {
   reviewedAt DateTime?
   cheerKind  CheerKind?
   cheerLine  String        @default("")
+  removedAt  DateTime? // T4: when the file was deleted for age; the row stays
 
   @@index([taskId])
 }
@@ -257,4 +262,21 @@ model Report {
 
   @@index([byId])
   @@index([resolvedAt, sentAt]) // P4: the moderator's list, the oldest unanswered first
+}
+
+enum ModeratorActionKind {
+  answer
+  pause
+  unpause
+}
+
+/// T3: what a moderator did, and when. No relations on purpose: a row outlives the moderator and the report. No code updates or deletes one.
+model ModeratorAction {
+  id          String              @id @default(uuid())
+  moderatorId String
+  action      ModeratorActionKind
+  reportId    String
+  at          DateTime
+
+  @@index([reportId])
 }

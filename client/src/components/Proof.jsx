@@ -1,6 +1,6 @@
 import { useId, useState } from 'react'
 import { FileText } from 'lucide-react'
-import { fileSizeText } from '../utils/format.js'
+import { fileSizeText, plural } from '../utils/format.js'
 import { Message, RetryButton } from './states.jsx'
 
 /**
@@ -19,7 +19,13 @@ export default function Proof({ proof, label, small = false, onRetry }) {
 
   return (
     <div id={id} tabIndex={-1} className="grid justify-items-start gap-3">
-      {proof.fileType && (!proof.fileUrl || (image && broken)) ? (
+      {proof.removed ? (
+        // T4: deleted for age; the days are from the approval to the removal
+        <Message>
+          {image ? 'Photo' : type.startsWith('video/') ? 'Video' : 'File'} removed
+          {proof.removed.afterDays === undefined ? '' : ` after ${plural(proof.removed.afterDays, 'day')}`}. The note and the result are kept.
+        </Message>
+      ) : proof.fileType && (!proof.fileUrl || (image && broken)) ? (
         <Message tone="warning">
           <p>The file did not load.</p>
           {onRetry && (

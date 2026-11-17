@@ -16,13 +16,13 @@ Checked against the code and rerun on 15 November 2026.
 
 | Measure | Today | Source |
 |---|---|---|
-| Server tests | 161 of 161 pass, in about 220 s (after Phase 3) | `npm test` |
+| Server tests | 213 of 213 pass, in about 383 s (after Phase 8, 17 November 2026; the recovery code's cost-12 hashes make sign-up slower); 161 of 161 in about 220 s after Phase 3 | `npm test` |
 | Whole-loop test | 1 of 1 passes in about 20 s, with no serious or critical axe finding on any page it visits and no Content-Security-Policy violation | `npm run e2e` in `client/` |
 | Every check | passes | `npm run verify` |
 | Server lint, client lint, client check | clean | `npm run lint`, `npm run check` |
 | Client build | after Phase 4: one file per page, the largest of the app's own 95 kB (the router library) and React DOM 218 kB, all within budget (`npm run check:size`); after Phase 3, one JS file of 569 kB, CSS 55 kB; 559.37 kB after Phase 1, larger than before it because of the dependency updates and the self-hosted font rules | `npm run build` |
-| Server routes | 47 in four routers, plus sign-out (Phase 4 replaced the three count routes with `/counts`, and added `/today` and `/tasks/history`) | `server/src/routes/` |
-| Schema | 11 models, 6 enums, 5 migrations (Phase 3 added `pausedAt`, `consentAt` and `consentVersion` to `User`; Phase 4 three indexes; Phase 5 `TaskSeries`, and `doneLooksLike`, `seriesId` and `seriesDay` on `Task`) | `server/prisma/schema.prisma` |
+| Server routes | after Phase 8: 69 in five routers (account 24, family 22, tasks 13, reports 6, series 4), plus sign-out; Phase 8 added `/settings/keep-proof`, `/me/recovery`, `/recovery`, `/me/export` and the two pause routes. Before: 47 in four routers, plus sign-out (Phase 4 replaced the three count routes with `/counts`, and added `/today` and `/tasks/history`) | `server/src/routes/` |
+| Schema | after Phase 8: 13 models, 8 enums, 9 migrations (Phase 8 added `ModeratorAction` and its enum, `totpSecret`, `totpLastStep`, `recoveryHash` and `keepProofDays` on `User`, and `removedAt` on `Proof`, and a data migration that signs every moderator out once). Before: 11 models, 6 enums, 5 migrations (Phase 3 added `pausedAt`, `consentAt` and `consentVersion` to `User`; Phase 4 three indexes; Phase 5 `TaskSeries`, and `doneLooksLike`, `seriesId` and `seriesDay` on `Task`) | `server/prisma/schema.prisma` |
 | Advisories | client 0, server 3 high (Prisma's command-line tool, accepted in `README.md`) | `npm audit` |
 | Lighthouse baseline (mobile, version 13.6.0, built app) | 15 November, all four in one run: Landing, Sign in, Overview and Today each performance 100, accessibility 100. An earlier run in Lighthouse's own Chrome gave Landing 95 and Sign in 97. | `npx lighthouse@13.6.0 --port=<n> --disable-storage-reset`, attached to a Playwright Chromium (`channel: 'chromium'`) in which a throwaway family signed in through the API, so no cookie is on a command line; spawned without blocking Node, or the tab never paints (`NO_FCP`) |
 | Committed | everything up to B4 (`cc7ce83`) and the first plan (`d8ca718`) | `git log` |
@@ -138,6 +138,8 @@ Done means: every row has a passing test or a written acceptance in this file, a
 | 10 | The submission date, the meetings held since 14 November, and who did which task | Yours to give |
 
 Phase 6 was answered on 16 November 2026: yes to the six stickers, the growing plant, the badge and the reward sound; no to "Say thanks".
+
+Phase 8 was answered on 16 November 2026: no word list was given, so item 8 is skipped and rule 8's three words stay.
 
 **For you to do by hand.** No session can do these.
 - Keep the Windows account that runs GrowKid behind a password, and turn on device encryption (BitLocker) if the machine has it.
@@ -476,19 +478,19 @@ Acceptance: the loop test runs axe with no known-issue list left; the whole loop
 
 **Ask first:** the source for the real screening word list. With none, skip item 8 and say so.
 
-1. - [ ] **A second step for the moderator.** The moderator reads every family's report text behind a password only. TOTP per RFC 6238 on `node:crypto`: SHA-1, 30-second steps, 6 digits, one step either side allowed, and the last used step stored so a code cannot be replayed. The secret is 20 random bytes in base32, in `User.totpSecret`. `MODERATOR_TOTP=new npm run moderator` prints the `otpauth://` link once, to the operator's terminal only. A moderator signing in without a code gets `NEEDS_CODE`, and Sign in then shows a code field. **(M, audit, medium)**
-2. - [ ] **Let a family be paused: the button.** `POST /api/reports/:id/pause` and `/unpause`, moderator only, using Phase 3's logic and answering `NOT_FOUND` when the sender is gone. Reports shows "Pause this family" with a confirm step, and a "paused" tag. Still no names. **(M, audit, high)**
-3. - [ ] **A record of what the moderator did, and a list that cannot hide a report.** `ModeratorAction` holds `id`, `moderatorId`, `action` (`answer`, `pause` or `unpause`), `reportId` and `at`, and has no update or delete path in code. The list stops at the oldest 200 today (`server/src/routes/reports.js:45`), so a flood from one family could hide another child's report: show the total waiting, and page through 200 at a time. **(M, todo #42, #46, audit)**
-4. - [ ] **Delete proof files after a while.** `User.keepProofDays Int @default(90)` on the parent, chosen from 30, 90 or 365 in Settings. `Proof.removedAt DateTime?`. `removeOldProofFiles()` runs in `server/src/index.js` at start-up and every 24 hours (`setInterval`, `unref`): it deletes each file once its task's approval is older than the family's setting, sets `removedAt`, and logs the count. The pages say "Photo removed after N days", and My proofs shows the ones kept. Privacy changes. **(M, audit, medium)**
-5. - [ ] **Parent password reset, by recovery code.** Today a parent who forgets their password is locked out.
+1. - [x] **A second step for the moderator.** The moderator reads every family's report text behind a password only. TOTP per RFC 6238 on `node:crypto`: SHA-1, 30-second steps, 6 digits, one step either side allowed, and the last used step stored so a code cannot be replayed. The secret is 20 random bytes in base32, in `User.totpSecret`. `MODERATOR_TOTP=new npm run moderator` prints the `otpauth://` link once, to the operator's terminal only. A moderator signing in without a code gets `NEEDS_CODE`, and Sign in then shows a code field. **(M, audit, medium)**
+2. - [x] **Let a family be paused: the button.** `POST /api/reports/:id/pause` and `/unpause`, moderator only, using Phase 3's logic and answering `NOT_FOUND` when the sender is gone. Reports shows "Pause this family" with a confirm step, and a "paused" tag. Still no names. **(M, audit, high)**
+3. - [x] **A record of what the moderator did, and a list that cannot hide a report.** `ModeratorAction` holds `id`, `moderatorId`, `action` (`answer`, `pause` or `unpause`), `reportId` and `at`, and has no update or delete path in code. The list stops at the oldest 200 today (`server/src/routes/reports.js:45`), so a flood from one family could hide another child's report: show the total waiting, and page through 200 at a time. **(M, todo #42, #46, audit)**
+4. - [x] **Delete proof files after a while.** `User.keepProofDays Int @default(90)` on the parent, chosen from 30, 90 or 365 in Settings. `Proof.removedAt DateTime?`. `removeOldProofFiles()` runs in `server/src/index.js` at start-up and every 24 hours (`setInterval`, `unref`): it deletes each file once its task's approval is older than the family's setting, sets `removedAt`, and logs the count. The pages say "Photo removed after N days", and My proofs shows the ones kept. Privacy changes. **(M, audit, medium)**
+5. - [x] **Parent password reset, by recovery code.** Today a parent who forgets their password is locked out.
    - At sign-up, and from Settings behind the password, make a code: 16 base32 characters from `crypto.randomBytes`, shown once as four groups. Its bcrypt hash goes in `User.recoveryHash`.
    - A new `/forgot` route and page take the email, the code and a new password. The answer is the same for a wrong email and a wrong code, and the route uses the sign-in limits.
    - On success: set the password, raise `tokenVersion`, clear the code, and tell the parent to make a new one. A paused family is refused.
    - Settings nudges a parent who has no code.
    - Sitemap §3 and §14 change first. The email stays unverified, and Privacy says so. **(M, todo #29)**
-6. - [ ] **Let parents download all their family's data.** `POST /api/me/export` takes the password and uses `passwordLimit`. It streams a `.zip` of stored, uncompressed entries, written by hand with `zlib.crc32` and no new dependency: `family.json` in the API's shapes, and `proofs/<id>.<ext>` for each kept file, one file read at a time. The quota keeps it under the zip64 limit. The client downloads through a function in `client/src/api/`. **(M, todo #31)**
-7. - [ ] **The GPS route in video tracks.** Some action cameras record their route in a separate track, which today is stored. In MP4 and MOV, find each `trak` whose `hdlr` handler is `meta`, `text` or `gpmd`; zero its sample bytes in `mdat` from `stsz`, `stsc` and `stco` or `co64`; then blank the `trak` and rename it `free`. Use a fixture with a timed-metadata track. Privacy changes. **(M, low)**
-8. - [ ] **The real screening word list,** only from the source the user gave. **(S to M, todo #20)**
+6. - [x] **Let parents download all their family's data.** `POST /api/me/export` takes the password and uses `passwordLimit`. It streams a `.zip` of stored, uncompressed entries, written by hand with `zlib.crc32` and no new dependency: `family.json` in the API's shapes, and `proofs/<id>.<ext>` for each kept file, one file read at a time. The quota keeps it under the zip64 limit. The client downloads through a function in `client/src/api/`. **(M, todo #31)**
+7. - [x] **The GPS route in video tracks.** Some action cameras record their route in a separate track, which today is stored. In MP4 and MOV, find each `trak` whose `hdlr` handler is `meta`, `text` or `gpmd`; zero its sample bytes in `mdat` from `stsz`, `stsc` and `stco` or `co64`; then blank the `trak` and rename it `free`. Use a fixture with a timed-metadata track. Privacy changes. **(M, low)**
+8. - [ ] **The real screening word list,** only from the source the user gave. **(S to M, todo #20)** Skipped: no list was given (16 November 2026).
 
 Acceptance:
 - a moderator cannot sign in without a valid code, and a replayed code fails

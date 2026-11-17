@@ -13,6 +13,7 @@
  * FILE_TYPE       a proof file is not a photo or a video
  * FILE_TOO_LARGE  a proof file is over the size limit
  * NOT_SIGNED_IN   no session, or it has expired
+ * NEEDS_CODE      a moderator's sign-in needs the code from their authenticator app; `fields.code` is 'wrong' when the one sent did not match
  * NOT_ALLOWED     signed in, but this role may not do that
  * PAUSED          sign-in to a family that is paused while a report is looked at
  * NOT_FOUND       no such thing, or it belongs to another family
@@ -22,7 +23,7 @@
  * SERVER          the server failed
  *
  * @typedef {'WRONG_DETAILS' | 'WRONG_PASSWORD' | 'EMAIL_TAKEN' | 'USERNAME_TAKEN' | 'INVALID' | 'SCREENED' | 'LOCKED'
- *   | 'REVIEWED' | 'NOT_ENOUGH' | 'FILE_TYPE' | 'FILE_TOO_LARGE' | 'NOT_SIGNED_IN' | 'NOT_ALLOWED' | 'PAUSED' | 'NOT_FOUND' | 'QUOTA' | 'TOO_MANY' | 'NETWORK'
+ *   | 'REVIEWED' | 'NOT_ENOUGH' | 'FILE_TYPE' | 'FILE_TOO_LARGE' | 'NOT_SIGNED_IN' | 'NEEDS_CODE' | 'NOT_ALLOWED' | 'PAUSED' | 'NOT_FOUND' | 'QUOTA' | 'TOO_MANY' | 'NETWORK'
  *   | 'SERVER'} ApiErrorCode
  */
 export class ApiError extends Error {

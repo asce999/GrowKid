@@ -78,7 +78,7 @@ export function TaskCard({ task, children }) {
   const review = task.status === 'sentBack' && lastReview(task)
   return (
     <article className="card task-card type-body-child">
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <CategoryTile task={task} />
         <StatusTag status={statusOf(task)} />
         <span className="ml-auto">

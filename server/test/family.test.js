@@ -3,12 +3,11 @@ import { randomUUID } from 'node:crypto'
 import { access, readdir } from 'node:fs/promises'
 import path from 'node:path'
 import { after, before, test } from 'node:test'
-import bcrypt from 'bcryptjs'
 import { zoneOf } from '../src/countries.js'
 import { db } from '../src/db.js'
 import { dayKey } from '../src/scoring.js'
 import { mp4, png } from './fixtures.js'
-import { as, family, start } from './helpers.js'
+import { as, family, moderator as newModerator, start } from './helpers.js'
 
 let server
 let moderator
@@ -17,14 +16,12 @@ const made = [] // every family this file makes, erased at the end so the upload
 const reportIds = [] // every report it sends that can outlive its sender, removed at the end by id
 before(async () => {
   server = await start()
-  const email = `mod-${randomUUID()}@example.com`
-  moderatorId = (await db.user.create({ data: { role: 'moderator', name: 'Mod', email, passwordHash: await bcrypt.hash('moderator-pass', 4) } })).id
-  moderator = as(server.base)
-  assert.equal((await moderator.post('/session', { identifier: email, password: 'moderator-pass' })).status, 200)
+  ;({ id: moderatorId, api: moderator } = await newModerator(server.base)) // T1: signed in with a code
 })
 after(async () => {
   await Promise.all(made.map((mom) => mom.api.post('/me/delete', { password: mom.password }))) // a no-op for a family a test already erased
   await db.report.deleteMany({ where: { id: { in: reportIds } } }) // the unanswered ones a deleted sender leaves behind
+  await db.moderatorAction.deleteMany({ where: { moderatorId } }) // T3: a test may; the app never does
   await db.user.deleteMany({ where: { id: moderatorId } })
   await server.close()
 })
@@ -510,7 +507,7 @@ test('deleting a family removes every row of theirs and every proof file, keeps 
   assert.equal((await db.user.count({ where: { id: { in: [other.mom.user.id, other.kid.id] } } })), 2) // another family is untouched
 
   // the moderator still sees both, told that nobody is left to read an answer, with nothing that leads back
-  const list = (await moderator.get('/reports')).body.filter((r) => kept.includes(r.id))
+  const list = (await moderator.get('/reports')).body.reports.filter((r) => kept.includes(r.id))
   assert.deepEqual(list.map((r) => r.senderGone), [true, true])
   const text = JSON.stringify(list)
   for (const secret of [...users, ...tasks, ...proofs.map((p) => p.id), 'Aarav', 'Diya', 'Test Parent', 'first.png', 'clip.mp4', 'Done!']) assert.equal(text.includes(secret), false, secret)

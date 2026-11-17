@@ -34,10 +34,18 @@ await mkdir(env.UPLOAD_DIR, { recursive: true })
 // Imported only now, so app.js can rely on a checked environment.
 const { default: app } = await import('./app.js')
 // C5: before any upload can start, so a file being written is never taken for one left behind. Only the count is logged.
-const { sweepOrphans } = await import('./files.js')
+const { removeOldProofFiles, sweepOrphans } = await import('./files.js')
 const swept = await sweepOrphans().catch((error) => console.error(`GrowKid could not check the upload folder for files left behind (${error.code ?? error.name})`)) // housekeeping: the server still starts
 if (swept) console.log(`GrowKid removed ${swept} proof file${swept === 1 ? '' : 's'} that no proof names`)
 const server = app.listen(Number(env.PORT), '127.0.0.1', (err) => {
   if (err) fail(`cannot listen (${err.code ?? 'error'})`)
   console.log(`GrowKid server listening on 127.0.0.1:${server.address().port}`)
 })
+// T4: old proof files go at start-up and once a day, by the real clock. unref: the timer never keeps the process alive.
+const tidy = () =>
+  removeOldProofFiles(new Date()).then(
+    (count) => count && console.log(`GrowKid removed ${count} proof file${count === 1 ? '' : 's'} older than their family keeps them`),
+    (error) => console.error(`GrowKid could not remove old proof files (${error.code ?? error.name})`),
+  )
+tidy()
+setInterval(tidy, 86_400_000).unref()

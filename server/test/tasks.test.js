@@ -6,12 +6,11 @@ import http from 'node:http'
 import path from 'node:path'
 import { after, before, mock, test } from 'node:test'
 import { setTimeout as sleep } from 'node:timers/promises'
-import bcrypt from 'bcryptjs'
 import { db, loadChild, lockChild } from '../src/db.js'
 import { hasRoom } from '../src/files.js'
 import { stickers, weekKey } from '../src/scoring.js'
-import { SECRET, box, brokenJpeg, chunk, jpeg, location, mp4, pdf, png, text, webm, webp } from './fixtures.js'
-import { as, family, start } from './helpers.js'
+import { SECRET, box, brokenJpeg, chunk, jpeg, location, mp4, pdf, png, text, webm, webp, withRoute } from './fixtures.js'
+import { as, family, moderator as newModerator, start } from './helpers.js'
 
 let server
 let moderator
@@ -19,10 +18,7 @@ let moderatorId
 const made = [] // every family this file makes, erased at the end so the upload folder ends empty
 before(async () => {
   server = await start()
-  const email = `mod-${randomUUID()}@example.com`
-  moderatorId = (await db.user.create({ data: { role: 'moderator', name: 'Mod', email, passwordHash: await bcrypt.hash('moderator-pass', 4) } })).id
-  moderator = as(server.base)
-  assert.equal((await moderator.post('/session', { identifier: email, password: 'moderator-pass' })).status, 200)
+  ;({ id: moderatorId, api: moderator } = await newModerator(server.base)) // T1: signed in with a code
 })
 const erase = (mom) => mom.api.post('/me/delete', { password: mom.password })
 after(async () => {
@@ -599,6 +595,14 @@ async function storedFrom(mom, kid, bytes, name) {
   assert.equal(proof.fileSize, onDisk.length) // the stored length, not the sent one
   return onDisk
 }
+
+test('T7: an uploaded video with a GPS track is stored without the route', async () => {
+  const { mom, kid } = await household()
+  const original = withRoute()
+  assert.equal(original.includes(SECRET), true)
+  const stored = await storedFrom(mom, kid, original, 'GOPR0001.MP4')
+  assert.deepEqual([stored.includes(SECRET), stored.includes('frames'), stored.length], [false, true, original.length])
+})
 
 test('A6: a JPEG is stored with no GPS and with its rotation; an MP4 with free for udta at the same size; a PNG without eXIf', async () => {
   const { mom, kid } = await household()

@@ -1,5 +1,8 @@
+import { spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test } from '@playwright/test'
+import { codeAt, stepAt } from '../../server/src/totp.js'
 
 // Final plan Phase 7, item 12: every parent and child route at 320 px wide (reflow, WCAG 1.4.10: the 400% zoom of a 1280 px
 // screen, so 200% is covered too), with reduced motion, checked with axe for anything serious or critical and for content wider
@@ -39,8 +42,12 @@ test('every route reflows at 320 px and passes axe, with reduced motion and with
   const options = { baseURL: 'http://127.0.0.1:4173', viewport: { width: 320, height: 720 }, reducedMotion: 'reduce' }
   const mom = await (await browser.newContext(options)).newPage()
   const kid = await (await browser.newContext(options)).newPage()
+  // the moderator's page: a moderator is only ever made by the server's script, so the spec runs it, signs in with a code, and removes it again
+  const modEnv = { ...process.env, MODERATOR_EMAIL: `e2e-mod-${stamp}@example.com`, MODERATOR_PASSWORD: `e2e-moderator-${stamp}-${stamp}` }
+  const serverDir = fileURLToPath(new URL('../../server/', import.meta.url))
+  const moderatorScript = (env) => spawnSync(process.execPath, ['--env-file=.env', 'scripts/moderator.js'], { cwd: serverDir, env, encoding: 'utf8' })
   try {
-    for (const path of ['/', '/privacy', '/login', '/signup']) await check(mom, path) // signed out first: a signed-in parent is sent on from these
+    for (const path of ['/', '/privacy', '/login', '/signup', '/forgot']) await check(mom, path) // signed out first: a signed-in parent is sent on from these
     // a family with something on every page: a reward, a repeating task, a task to do, one waiting and one approved
     expect((await mom.request.post('/api/parents', { headers, data: parent })).status()).toBe(201)
     const { id: childId } = await (await mom.request.post('/api/children', { headers, data: child })).json()
@@ -48,7 +55,7 @@ test('every route reflows at 320 px and passes axe, with reduced motion and with
     await mom.request.post('/api/series', { headers, data: { childId, category: 'chores', title: 'Feed the cat', instructions: 'One scoop.', points: 10, weekdays: 127, dueTime: '18:00' } })
     const task = async (title, days) =>
       (await (await mom.request.post('/api/tasks', { headers, data: { childId, category: 'reading', title, instructions: 'One chapter.', points: 20, dueAt: new Date(Date.now() + days * DAY).toISOString() } })).json()).id
-    const open = await task('Read a chapter', 3)
+    const open = await task('Read a chapter', 0.1) // due in about two hours, so its card carries the longer Due soon tag at every hour of the day
     const waiting = await task('Read a poem', 2)
     const done = await task('Read a story', 1)
     expect((await kid.request.post('/api/session', { headers, data: { identifier: child.username, password: child.password } })).status()).toBe(200)
@@ -68,13 +75,16 @@ test('every route reflows at 320 px and passes axe, with reduced motion and with
     for (const tab of [mom, kid]) await tab.emulateMedia({ forcedColors: 'active' })
     await check(mom, '/parent', { rules: ['color-contrast'] })
     await check(kid, '/child', { rules: ['color-contrast'] })
-    // the moderator's page, as the seeded demo moderator (a moderator is only ever made by a script, so the test cannot make one)
+    const made = moderatorScript(modEnv) // never printed: its second line is the secret
+    expect(made.status).toBe(0)
+    const secret = new URL(made.stdout.trim().split(/\r?\n/)[1]).searchParams.get('secret')
     const mod = await (await browser.newContext(options)).newPage()
-    const moderator = await mod.request.post('/api/session', { headers, data: { identifier: 'moderator@example.com', password: 'growkid-demo' } })
-    if (moderator.status() === 200) await check(mod, '/admin/reports')
-    else test.info().annotations.push({ type: 'note', description: 'no demo moderator in this database, so /admin/reports was not checked' })
+    const signedIn = await mod.request.post('/api/session', { headers, data: { identifier: modEnv.MODERATOR_EMAIL, password: modEnv.MODERATOR_PASSWORD, code: codeAt(secret, stepAt()) } })
+    expect(signedIn.status()).toBe(200)
+    await check(mod, '/admin/reports')
   } finally {
     const gone = await mom.request.post('/api/me/delete', { headers, data: { password: parent.password } })
     expect([204, 401]).toContain(gone.status())
+    moderatorScript({ ...modEnv, MODERATOR_REMOVE: '1' })
   }
 })

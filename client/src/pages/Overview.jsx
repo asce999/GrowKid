@@ -3,10 +3,12 @@ import { Link, useNavigate } from 'react-router-dom'
 import { ChevronRight, Circle, CircleCheck } from 'lucide-react'
 import * as api from '../api/index.js'
 import Badge from '../components/Badge.jsx'
+import RecoveryCode from '../components/RecoveryCode.jsx'
 import { EmptyState, ErrorState, Message, PageLoading } from '../components/states.jsx'
 import { CategoryTile, TaskRow } from '../components/Task.jsx'
 import { noticeExpiry, useLoad } from '../hooks/useLoad.js'
 import { useOnce } from '../hooks/useOnce.js'
+import { useSession } from '../store/session.js'
 import { addDays, dayKeyOf, daysBetween, weekdayOf, whenText, plural } from '../utils/format.js'
 import { ideaOf, ideaWords } from '../utils/ideas.js'
 import { errorText } from '../utils/messages.js'
@@ -154,6 +156,8 @@ export default function Overview() {
     { live: true },
   )
   const [note] = useOnce()
+  const recoveryCode = useSession((s) => s.recoveryCode) // T5: only straight after sign-up
+  const clearRecoveryCode = useSession((s) => s.clearRecoveryCode)
 
   if (loaded.status === 'loading') return <PageLoading rows={3} />
   if (loaded.status === 'error') return <ErrorState error={loaded.error} onRetry={loaded.reload} />
@@ -166,6 +170,16 @@ export default function Overview() {
     <>
       <title>Overview – GrowKid</title>
       <h1>Overview</h1>
+      {recoveryCode && (
+        <RecoveryCode
+          code={recoveryCode}
+          className="mt-6"
+          onSaved={() => {
+            clearRecoveryCode()
+            document.getElementById('main')?.focus() // the card that held the focus has gone
+          }}
+        />
+      )}
 
       {note?.approved && (
         <Message ref={focusLater} tabIndex={-1} tone="success" role="status" className="mt-4">

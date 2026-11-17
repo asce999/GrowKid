@@ -2,6 +2,7 @@ import { plural } from './format.js'
 const TEXT = {
   NETWORK: 'GrowKid could not be reached. Check your connection and try again.',
   NOT_SIGNED_IN: 'You have been signed out. Sign in again to carry on.',
+  NEEDS_CODE: 'Type the 6-digit code from your authenticator app.',
   NOT_ALLOWED: 'Your account cannot do that. Sign in with the account it belongs to.',
   INVALID: 'Some details were not accepted. Check them and try again.',
   NOT_FOUND: 'That no longer exists. It may have been deleted.',

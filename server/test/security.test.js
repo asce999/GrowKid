@@ -1,11 +1,10 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, test } from 'node:test'
-import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { who } from '../src/auth.js'
 import { db } from '../src/db.js'
-import { as, family, start } from './helpers.js'
+import { as, family, moderator as newModerator, start } from './helpers.js'
 
 let server
 let api
@@ -138,11 +137,8 @@ test('a forged, tampered, stale or expired session cookie is not signed in; the 
 })
 
 test('a moderator gets nothing outside reports: every other route is NOT_ALLOWED to them and NOT_SIGNED_IN to a visitor', async () => {
-  const email = `mod-${randomUUID()}@example.com`
-  const { id: moderatorId } = await db.user.create({ data: { role: 'moderator', name: 'Mod', email, passwordHash: await bcrypt.hash('moderator-pass', 4) } })
+  const { id: moderatorId, api: moderator } = await newModerator(server.base) // T1: signed in with a code
   try {
-    const moderator = as(server.base)
-    assert.equal((await moderator.post('/session', { identifier: email, password: 'moderator-pass' })).status, 200)
     const x = randomUUID() // an id of nothing: the role is refused before the thing is looked for
     const routes = [
       ['get', '/tasks'], ['get', `/tasks/${x}`], ['get', `/proofs/${x}/file`], ['get', '/counts'], ['get', '/today'], ['get', '/tasks/history'], ['get', '/series'], ['post', '/series'], ['put', `/series/${x}`], ['del', `/series/${x}`],
@@ -152,6 +148,7 @@ test('a moderator gets nothing outside reports: every other route is NOT_ALLOWED
       ['post', '/rewards'], ['post', '/requests'], ['post', `/requests/${x}/answer`], ['post', '/me/delete'], ['post', '/reports'], ['post', '/me/sessions/end'], ['post', `/children/${x}/sessions/end`],
       ['put', `/tasks/${x}`], ['put', '/pin'], ['put', `/children/${x}/password`], ['put', `/children/${x}/quest`], ['put', '/me/password'], ['put', '/settings'], ['put', '/settings/country'],
       ['patch', '/me'], ['patch', `/children/${x}`], ['del', `/tasks/${x}`], ['del', `/children/${x}`], ['del', `/rewards/${x}`],
+      ['put', '/settings/keep-proof'], ['post', '/me/recovery'], ['post', '/me/export'], // Phase 8: T4, T5, T6
     ]
     for (const [method, path] of routes) {
       for (const [visitor, status, code] of [[moderator, 403, 'NOT_ALLOWED'], [api, 401, 'NOT_SIGNED_IN']]) {

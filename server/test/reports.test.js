@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
+import { readFile, readdir } from 'node:fs/promises'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { after, before, test } from 'node:test'
-import bcrypt from 'bcryptjs'
 import { db } from '../src/db.js'
 import { png } from './fixtures.js'
-import { as, family, start } from './helpers.js'
+import { as, family, moderator as newModerator, start } from './helpers.js'
 
 let server
 let moderator
@@ -13,14 +15,12 @@ const made = [] // every family this file makes, erased at the end so the upload
 const reportIds = [] // every report it makes, removed at the end by id: an unanswered one outlives its sender
 before(async () => {
   server = await start()
-  const email = `mod-${randomUUID()}@example.com`
-  moderatorId = (await db.user.create({ data: { role: 'moderator', name: 'Mod', email, passwordHash: await bcrypt.hash('moderator-pass', 4) } })).id
-  moderator = as(server.base)
-  assert.equal((await moderator.post('/session', { identifier: email, password: 'moderator-pass' })).status, 200)
+  ;({ id: moderatorId, api: moderator } = await newModerator(server.base)) // T1: signed in with a code
 })
 after(async () => {
   await Promise.all(made.map((mom) => mom.api.post('/me/delete', { password: mom.password }))) // a no-op for a family a test already erased
   await db.report.deleteMany({ where: { id: { in: reportIds } } })
+  await db.moderatorAction.deleteMany({ where: { moderatorId } }) // T3: a test may; the app never does
   await db.user.deleteMany({ where: { id: moderatorId } })
   await server.close()
 })
@@ -44,7 +44,7 @@ const sendReport = async (who, body) => {
   return res
 }
 /** The moderator's copy of one report, from the list of those waiting. */
-const seenByModerator = async (id) => (await moderator.get('/reports')).body.find((r) => r.id === id)
+const seenByModerator = async (id) => (await moderator.get('/reports')).body.reports.find((r) => r.id === id)
 
 async function addChild(mom, name = 'Kid', ip) {
   const sent = { name, username: `k${randomUUID().slice(0, 8)}`, password: 'small-secret-1', consent: true }
@@ -253,4 +253,157 @@ test('a request with no body at all gets the normal refusal, never a 500 (Expres
   const request = await db.rewardRequest.create({ data: { childId: kid.id, parentId: mom.user.id, rewardId: cheap.id, title: cheap.title, cost: cheap.cost, requestedAt: new Date() } })
   assert.equal((await mom.api.post(`/requests/${request.id}/answer`)).status, 400)
   assert.equal((await mom.api.post('/me/delete')).status, 403)
+})
+
+// ------------------------------------------------------------------ T2, pausing from the moderator's page
+
+const pauseIt = (id, action = 'pause', who = moderator) => who.post(`/reports/${id}/${action}`)
+/** A paused parent was signed out; after() deletes the family through the parent's own client, so it signs in again. */
+const signBackIn = async (mom) => assert.equal((await mom.api.post('/session', { identifier: mom.email, password: mom.password })).status, 200)
+const KID_PASSWORD = 'small-secret-1' // addChild's
+
+test('T2: a moderator pauses and unpauses the family of a report\'s sender: every device is signed out, sign-in is PAUSED, the report says paused and names nobody, nothing is deleted, and unpausing restores sign-in', async () => {
+  const { mom, kid } = await household('Kid')
+  const task = (await mom.api.post('/tasks', {
+    childId: kid.id, category: 'study', title: 'Read a chapter', instructions: 'Chapter three.', points: 20, dueAt: new Date(Date.now() + DAY).toISOString(),
+  })).body
+  const report = (await sendReport(kid, { details: 'Please look.', taskId: task.id })).body
+  const paused = await pauseIt(report.id)
+  assert.equal(paused.status, 200)
+  assert.equal(paused.body.paused, true)
+  for (const key of Object.keys(paused.body)) assert.ok(['id', 'from', 'details', 'sentAt', 'item', 'paused'].includes(key), key)
+  for (const secret of [kid.id, kid.username, mom.user.id, mom.email, 'Kid', 'Test Parent']) assert.equal(JSON.stringify(paused.body).includes(secret), false, secret)
+  refused(await mom.api.get('/children'), 401, 'NOT_SIGNED_IN') // signed out on every device
+  refused(await kid.api.get('/tasks'), 401, 'NOT_SIGNED_IN')
+  refused(await as(server.base).post('/session', { identifier: mom.email, password: mom.password }), 403, 'PAUSED')
+  refused(await as(server.base).post('/session', { identifier: kid.username, password: KID_PASSWORD }), 403, 'PAUSED')
+  assert.equal((await seenByModerator(report.id)).paused, true)
+  // nothing of theirs is deleted or changed
+  const row = await db.task.findUniqueOrThrow({ where: { id: task.id } })
+  assert.deepEqual([row.status, row.title, await db.user.count({ where: { id: { in: [mom.user.id, kid.id] } } })], ['todo', 'Read a chapter', 2])
+
+  const back = await pauseIt(report.id, 'unpause')
+  assert.equal(back.status, 200)
+  assert.equal('paused' in back.body, false)
+  assert.equal((await seenByModerator(report.id)).paused, undefined)
+  await signBackIn(mom)
+  assert.equal((await as(server.base).post('/session', { identifier: kid.username, password: KID_PASSWORD })).status, 200)
+  // a page out of date unpauses again: nobody is signed out
+  assert.equal((await pauseIt(report.id, 'unpause')).status, 200)
+  assert.equal((await mom.api.get('/children')).status, 200)
+})
+
+test('T2: pause and unpause are the moderator\'s alone; an unknown report and one whose sender is gone are NOT_FOUND', async () => {
+  const { mom, kid } = await household('Kid')
+  const report = (await sendReport(kid, { details: 'Please look.' })).body
+  for (const action of ['pause', 'unpause']) {
+    refused(await pauseIt(report.id, action, mom.api), 403, 'NOT_ALLOWED')
+    refused(await pauseIt(report.id, action, kid.api), 403, 'NOT_ALLOWED')
+    refused(await pauseIt(report.id, action, as(server.base)), 401, 'NOT_SIGNED_IN')
+    refused(await pauseIt(randomUUID(), action), 404, 'NOT_FOUND')
+    refused(await pauseIt('nope', action), 404, 'NOT_FOUND')
+  }
+  assert.equal((await kid.api.get('/tasks')).status, 200) // nothing was paused
+  const gone = await household('Gone')
+  const orphan = (await sendReport(gone.kid, { details: 'Kept after the family goes.' })).body
+  assert.equal((await gone.mom.api.post('/me/delete', { password: gone.mom.password })).status, 204)
+  for (const action of ['pause', 'unpause']) refused(await pauseIt(orphan.id, action), 404, 'NOT_FOUND')
+  const answered = (await sendReport(kid, { details: 'Answered already.' })).body
+  assert.equal((await moderator.post(`/reports/${answered.id}/resolve`, { note: 'Done.' })).status, 200)
+  for (const action of ['pause', 'unpause']) refused(await pauseIt(answered.id, action), 404, 'NOT_FOUND') // only a waiting report pauses
+  assert.equal((await kid.api.get('/tasks')).status, 200)
+  assert.equal(await db.moderatorAction.count({ where: { reportId: { in: [report.id, orphan.id] }, action: { not: 'answer' } } }), 0) // a refusal leaves no record
+})
+
+test('T2: a report cannot be answered while its family is paused (LOCKED), and can be once it is unpaused', async () => {
+  const { mom, kid } = await household('Kid')
+  const report = (await sendReport(kid, { details: 'Please look.' })).body
+  assert.equal((await pauseIt(report.id)).status, 200)
+  refused(await moderator.post(`/reports/${report.id}/resolve`, { note: 'An answer.' }), 409, 'LOCKED')
+  assert.equal((await db.report.findUniqueOrThrow({ where: { id: report.id } })).resolvedAt, null)
+  assert.equal((await pauseIt(report.id, 'unpause')).status, 200)
+  const done = await moderator.post(`/reports/${report.id}/resolve`, { note: 'An answer.' })
+  assert.deepEqual([done.status, done.body.resolution?.note], [200, 'An answer.'])
+  await signBackIn(mom)
+})
+
+test('T2: both reports of one family say paused, whichever of them it was paused from', async () => {
+  const { mom, kid } = await household('Kid')
+  const fromKid = (await sendReport(kid, { details: 'From the child.' })).body
+  const fromMom = (await sendReport(mom, { details: 'From the parent.' })).body
+  const other = await household('Other')
+  const unrelated = (await sendReport(other.kid, { details: 'Another family.' })).body
+  const states = async () => Promise.all([fromKid, fromMom, unrelated].map(async ({ id }) => (await seenByModerator(id)).paused))
+  for (const [from, to] of [[fromKid, fromMom], [fromMom, fromKid]]) {
+    assert.equal((await pauseIt(from.id)).status, 200)
+    assert.deepEqual(await states(), [true, true, undefined])
+    assert.equal((await pauseIt(to.id, 'unpause')).status, 200) // unpaused from the other report
+    assert.deepEqual(await states(), [undefined, undefined, undefined])
+  }
+  await signBackIn(mom)
+})
+
+// ------------------------------------------------------------------ T3, the moderator's record and a list with no hidden end
+
+test('T3: answering, pausing and unpausing each leave one row: which moderator, which report, what and when', async () => {
+  const { mom, kid } = await household('Kid')
+  const report = (await sendReport(kid, { details: 'Please look.' })).body
+  assert.equal((await pauseIt(report.id)).status, 200)
+  assert.equal((await pauseIt(report.id, 'unpause')).status, 200)
+  assert.equal((await moderator.post(`/reports/${report.id}/resolve`, { note: 'Answered.' })).status, 200)
+  const rows = await db.moderatorAction.findMany({ where: { reportId: report.id } })
+  assert.deepEqual(rows.map((row) => row.action).sort(), ['answer', 'pause', 'unpause'])
+  for (const row of rows) {
+    assert.deepEqual(Object.keys(row).sort(), ['action', 'at', 'id', 'moderatorId', 'reportId']) // no words and no names
+    assert.deepEqual([row.moderatorId, Math.abs(row.at - Date.now()) < 60_000], [moderatorId, true])
+  }
+  await signBackIn(mom)
+})
+
+test('T3: the list says how many wait and pages through them 200 at a time, oldest first', async () => {
+  const ids = Array.from({ length: 205 }, () => randomUUID())
+  reportIds.push(...ids)
+  const first = Date.UTC(2001, 0, 1) // older than any other report waiting here, so these lead the list
+  await db.report.createMany({ data: ids.map((id, i) => ({ id, byId: null, from: 'child', details: `Flood ${i}`, sentAt: new Date(first + i * 1000) })) })
+  const total = await db.report.count({ where: { resolvedAt: null } })
+  const page = async (offset) => (await moderator.get(`/reports?offset=${offset}`)).body
+  const one = await page(0)
+  assert.equal(one.waiting, total)
+  assert.deepEqual(one.reports.map((r) => r.id), ids.slice(0, 200))
+  const two = await page(200)
+  assert.equal(two.waiting, total)
+  assert.equal(two.reports.length, Math.min(200, total - 200))
+  assert.deepEqual(two.reports.slice(0, 5).map((r) => r.id), ids.slice(200)) // the rest of the flood, then whatever else waits
+  assert.deepEqual((await page('nonsense')).reports.map((r) => r.id), ids.slice(0, 200)) // anything but a whole number is the start
+  await db.report.deleteMany({ where: { id: { in: ids } } })
+  assert.equal((await moderator.get('/reports')).body.waiting, total - 205)
+})
+
+test('T3: deleting a family keeps the record of what the moderator did', async () => {
+  const gone = await household('Gone')
+  const report = (await sendReport(gone.kid, { details: 'Please look.' })).body
+  assert.equal((await pauseIt(report.id)).status, 200)
+  assert.equal((await pauseIt(report.id, 'unpause')).status, 200)
+  await signBackIn(gone.mom)
+  assert.equal((await gone.mom.api.post('/me/delete', { password: gone.mom.password })).status, 204)
+  assert.equal(await db.moderatorAction.count({ where: { reportId: report.id } }), 2)
+  // answering the kept report deletes the report, never its record
+  assert.equal((await moderator.post(`/reports/${report.id}/resolve`, { note: 'Done.' })).status, 200)
+  assert.equal(await db.report.count({ where: { id: report.id } }), 0)
+  assert.deepEqual((await db.moderatorAction.findMany({ where: { reportId: report.id } })).map((row) => row.action).sort(), ['answer', 'pause', 'unpause'])
+})
+
+test('T3: no code changes or deletes the record', async () => {
+  const writes = /moderatorAction\.(update|updateMany|delete|deleteMany|upsert)/
+  const found = []
+  let read = 0
+  for (const dir of ['src', 'scripts']) {
+    for (const entry of await readdir(fileURLToPath(new URL(`../${dir}/`, import.meta.url)), { recursive: true, withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith('.js')) continue
+      read += 1
+      if (writes.test(await readFile(path.join(entry.parentPath, entry.name), 'utf8'))) found.push(entry.name)
+    }
+  }
+  assert.ok(read > 10, `read ${read} files`)
+  assert.deepEqual(found, [])
 })

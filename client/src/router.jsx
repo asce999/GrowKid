@@ -12,6 +12,7 @@ const pages = {
   ChildForm: page(() => import('./pages/ChildForm.jsx')),
   ChildTask: page(() => import('./pages/ChildTask.jsx')),
   Family: page(() => import('./pages/Family.jsx')),
+  Forgot: page(() => import('./pages/Forgot.jsx')),
   Growth: page(() => import('./pages/Growth.jsx')),
   Landing: page(() => import('./pages/Landing.jsx')),
   Overview: page(() => import('./pages/Overview.jsx')),
@@ -31,7 +32,7 @@ const pages = {
   Today: page(() => import('./pages/Today.jsx')),
 }
 
-// All 23 routes of Documentation/FRONTEND-SITEMAP.md section 3.
+// All 24 routes of Documentation/FRONTEND-SITEMAP.md section 3.
 
 const alone = (path, shell, lazy) => ({ path, element: shell, children: [{ index: true, lazy }] })
 
@@ -47,6 +48,7 @@ export const router = createBrowserRouter([
           alone('/', <PublicShell />, pages.Landing),
           { path: '/login', lazy: pages.SignIn },
           { path: '/signup', lazy: pages.SignUp },
+          { path: '/forgot', lazy: pages.Forgot },
         ],
       },
       alone('/privacy', <PublicShell />, pages.Privacy),

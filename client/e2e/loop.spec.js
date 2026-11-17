@@ -133,7 +133,7 @@ test('a family signs up, a task is set, proved and approved, a reward is asked f
       await page.goto('/parent/settings')
       await accessible(page)
       await page.getByRole('button', { name: /Delete the family.s data/ }).click()
-      await page.getByLabel('Your password').fill(parent.password)
+      await page.getByRole('dialog').getByLabel('Your password').fill(parent.password) // Settings has other password fields (T5, T6)
       await accessible(page)
       await page.getByRole('button', { name: 'Delete everything' }).click()
       await expect(page).not.toHaveURL(/\/parent/)

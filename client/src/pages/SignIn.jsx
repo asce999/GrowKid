@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { Link, useLocation } from 'react-router-dom'
 import * as api from '../api/index.js'
 import { Field, PasswordField } from '../components/Field.jsx'
@@ -33,8 +34,17 @@ export default function SignIn() {
   const [password, setPassword] = useState('')
   const [problem, setProblem] = useState(null)
   const [busy, setBusy] = useState(false)
+  // T1: a moderator's second step. It belongs to the details it followed, so changing either of them hides it again.
+  const [code, setCode] = useState('')
+  const [needsCode, setNeedsCode] = useState(false)
   const first = useRef(null)
+  const codeBox = useRef(null)
   const demo = useLoad(api.listDemoSignIns)
+  const changed = (set) => (e) => {
+    set(e.target.value)
+    setNeedsCode(false)
+    setCode('')
+  }
 
   async function submit(event) {
     event.preventDefault()
@@ -42,11 +52,26 @@ export default function SignIn() {
       setProblem('Type your email or username, and your password.')
       return
     }
+    if (needsCode && !code.trim()) {
+      setProblem(errorText({ code: 'NEEDS_CODE' }))
+      codeBox.current?.querySelector('input')?.focus()
+      return
+    }
     setBusy(true)
     setProblem(null)
     try {
-      await signIn({ identifier, password }) // the route guard then sends them to their own home
+      await signIn({ identifier, password, ...(needsCode && { code }) }) // the route guard then sends them to their own home
     } catch (error) {
+      if (error.code === 'NEEDS_CODE') {
+        // drawn at once, so the code field exists before the focus moves into it
+        flushSync(() => {
+          setNeedsCode(true)
+          setBusy(false)
+          setProblem(error.fields?.code === 'wrong' ? 'That code did not match. Wait for the next code in your app, then try again.' : null)
+        })
+        codeBox.current?.querySelector('input')?.focus()
+        return
+      }
       setProblem(
         error.code === 'WRONG_DETAILS'
           ? 'That email or username and password do not match. Check both and try again.'
@@ -73,7 +98,7 @@ export default function SignIn() {
             label="Email or username"
             hint={<span className="lg:hidden">Parents use their email. Children use their username.</span>}
             value={identifier}
-            onChange={(e) => setIdentifier(e.target.value)}
+            onChange={changed(setIdentifier)}
             name="username"
             autoComplete="username"
             autoCapitalize="none"
@@ -83,10 +108,28 @@ export default function SignIn() {
         <PasswordField
           label="Password"
           value={password}
-          onChange={(e) => setPassword(e.target.value)}
+          onChange={changed(setPassword)}
           name="password"
           autoComplete="current-password"
         />
+        {needsCode && (
+          <>
+            <Message role="status">Your password is right. Now type the code from your authenticator app.</Message>
+            <div ref={codeBox}>
+              <Field
+                label="Code"
+                hint="6 digits. It changes every 30 seconds."
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                name="code"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                spellCheck="false"
+                maxLength={7}
+              />
+            </div>
+          </>
+        )}
         {problem && (
           <Message tone="danger" alert>
             {problem}
@@ -102,8 +145,11 @@ export default function SignIn() {
           Forgot your password?
         </summary>
         <p className="muted mt-2">
-          If you are a child, ask your parent. They can set a new password for you. If you are a parent, this
-          version of GrowKid cannot recover a password yet.
+          If you are a child, ask your parent. They can set a new password for you. If you are a parent,{' '}
+          <Link to="/forgot" className="font-medium text-navy-800 underline underline-offset-4">
+            set a new password with your recovery code
+          </Link>
+          .
         </p>
       </details>
 
@@ -134,6 +180,8 @@ export default function SignIn() {
                     setIdentifier(id)
                     setPassword(pw)
                     setProblem(null)
+                    setNeedsCode(false) // the code step belongs to the details it followed
+                    setCode('')
                   }}
                 >
                   Fill in

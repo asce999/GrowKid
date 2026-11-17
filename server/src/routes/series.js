@@ -53,7 +53,7 @@ export async function makeDueTasks(children, time = now()) {
   }
 }
 
-const asSeries = ({ id, childId, category, title, instructions, doneLooksLike, points, weekdays, dueTime, active }) => ({
+export const asSeries = ({ id, childId, category, title, instructions, doneLooksLike, points, weekdays, dueTime, active }) => ({
   id, childId, category, title, instructions, doneLooksLike, points, weekdays, dueTime, active,
 })
 

@@ -1,16 +1,17 @@
 import { useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
-import { Link } from 'react-router-dom'
 import { TriangleAlert } from 'lucide-react'
 import * as api from '../api/index.js'
 import NameForm from '../components/NameForm.jsx'
 import ConfirmDialog from '../components/ConfirmDialog.jsx'
+import RecoveryCode from '../components/RecoveryCode.jsx'
 import { NOTICE, canNotify, setNudge, wantsNudge } from '../api/notify.js'
 import { Field, PasswordField, Requirement } from '../components/Field.jsx'
 import { ErrorState, Message, PageLoading } from '../components/states.jsx'
+import { useForm } from '../hooks/useForm.js'
 import { noticeExpiry, useLoad } from '../hooks/useLoad.js'
 import { useSession } from '../store/session.js'
-import { busyProps, focusFirstInvalid, refusedPassword } from '../utils/forms.js'
+import { busyProps, focusFirstInvalid, focusLater, refusedPassword } from '../utils/forms.js'
 import { errorText } from '../utils/messages.js'
 import { rules } from '../utils/rules.js'
 import { LOCALE } from '../utils/format.js'
@@ -95,6 +96,80 @@ function Password() {
         {state.busy ? 'Changing…' : 'Change password'}
       </button>
     </form>
+  )
+}
+
+/** T5: the password, then a new recovery code. A fresh form after each code (its key), so the empty field is not an error. */
+function RecoveryForm({ onMade }) {
+  const { form, values, field, busy, problem, shown, submit } = useForm({ password: '' })
+  const [wrong, setWrong] = useState(null) // the password the server refused, while it is still the one typed
+  const errors = {
+    password: !values.password ? 'Type your password to make a new code.' : wrong === values.password ? 'That is not your password. No code was made.' : null,
+  }
+  const send = (event) =>
+    submit(
+      event,
+      errors,
+      async () => onMade((await api.makeRecoveryCode(values.password)).recoveryCode),
+      (failure) => {
+        if (failure.code !== 'WRONG_PASSWORD') return false
+        setWrong(values.password)
+        focusFirstInvalid(form.current)
+        return true
+      },
+    )
+  return (
+    <form ref={form} className="grid max-w-md gap-4" onSubmit={send} noValidate>
+      <PasswordField label="Your password" error={shown(errors, 'password')} value={values.password} onChange={field('password')} name="password" autoComplete="current-password" />
+      {problem && (
+        <Message tone="danger" alert>
+          {problem}
+        </Message>
+      )}
+      <button className="btn btn-secondary justify-self-start" {...busyProps(busy)}>
+        {busy ? 'Making a code…' : 'Make a new code'}
+      </button>
+    </form>
+  )
+}
+
+/** T5: whether the parent has a recovery code, and a new one behind the password; the old one then stops working. */
+function Recovery({ settings }) {
+  const [has, setHas] = useState(settings.recovery)
+  const [code, setCode] = useState(null)
+  const [round, setRound] = useState(0)
+  const box = useRef(null)
+  return (
+    <div ref={box} tabIndex={-1} className="grid max-w-prose gap-4">
+      {has ? (
+        <p className="muted">
+          You have a recovery code. It lets you set a new password if you forget yours. If you have lost it, make a new one; the old one
+          then stops working.
+        </p>
+      ) : (
+        <Message tone="warning">You have no recovery code. Without one, a forgotten password cannot be reset.</Message>
+      )}
+      {code && (
+        <div ref={focusLater} tabIndex={-1}>
+          <RecoveryCode
+            code={code}
+            Heading="h3"
+            onSaved={() => {
+              setCode(null)
+              box.current?.focus() // the card that held the focus has gone
+            }}
+          />
+        </div>
+      )}
+      <RecoveryForm
+        key={round}
+        onMade={(made) => {
+          setHas(true)
+          setCode(made)
+          setRound((n) => n + 1)
+        }}
+      />
+    </div>
   )
 }
 
@@ -194,6 +269,87 @@ function Country({ settings, countries }) {
   )
 }
 
+const KEEP_FOR = [
+  [30, '30 days'],
+  [90, '90 days'],
+  [365, '1 year'],
+]
+
+/** T4: how long a proof's photo or video is kept after its task is approved. A shorter time deletes older files, so it asks first. */
+function KeepProof({ settings }) {
+  const [saved, setSaved] = useState(settings.keepProofDays)
+  const [days, setDays] = useState(settings.keepProofDays)
+  const [state, setState] = useState({})
+  const confirm = useRef(null)
+  const save = async () => {
+    setSaved((await api.setKeepProofDays(days)).keepProofDays)
+    setState({ saved: true })
+  }
+
+  async function submit(event) {
+    event.preventDefault()
+    if (days < saved) return confirm.current.open() // files are lost, so it asks first
+    setState({ busy: true })
+    try {
+      await save()
+    } catch (failure) {
+      setState({ problem: errorText(noticeExpiry(failure)) })
+    }
+  }
+
+  return (
+    <>
+      <form className="grid max-w-md gap-4" onSubmit={submit} noValidate>
+        <Field
+          as="select"
+          label="Keep proof photos and videos for"
+          hint="A proof’s photo or video is deleted this long after its task is approved. The task, the note and the result stay."
+          value={days}
+          onChange={(e) => {
+            setDays(Number(e.target.value))
+            setState((s) => ({ busy: s.busy })) // a save in flight stays busy
+          }}
+          name="keep-proof"
+        >
+          {KEEP_FOR.map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </Field>
+        {state.problem && (
+          <Message tone="danger" alert>
+            {state.problem}
+          </Message>
+        )}
+        {state.saved && (
+          <Message tone="success" role="status">
+            Saved.
+          </Message>
+        )}
+        <button className="btn btn-secondary justify-self-start" {...busyProps(state.busy)}>
+          {state.busy ? 'Saving…' : 'Save'}
+        </button>
+      </form>
+      <ConfirmDialog
+        ref={confirm}
+        danger
+        title="Delete older photos and videos?"
+        keep="Keep them"
+        confirm="Save and delete older files"
+        busyText="Saving…"
+        act={async () => {
+          await save()
+          confirm.current.close()
+        }}
+      >
+        Photos and videos from tasks approved more than {days} days ago are deleted within a day. They cannot be brought back. To keep them,
+        download your family’s data first.
+      </ConfirmDialog>
+    </>
+  )
+}
+
 /** The one switch that shows children each other's week. It saves as soon as it is changed. */
 function Leaderboard({ settings }) {
   const [on, setOn] = useState(settings.leaderboard)
@@ -275,6 +431,66 @@ function Nudge() {
   )
 }
 
+/** T6: everything GrowKid holds for the family, as one .zip, behind the password. Nothing changes here. */
+function Download() {
+  const { form, values, setValues, field, busy, setBusy, problem, shown, submit } = useForm({ password: '' })
+  const [wrong, setWrong] = useState(null) // the password the server refused, while it is still the one typed
+  const [started, setStarted] = useState(false)
+  const errors = {
+    password: !values.password ? 'Type your password to download.' : wrong === values.password ? 'That is not your password. Nothing was downloaded.' : null,
+  }
+  const send = (event) => {
+    setStarted(false)
+    return submit(
+      event,
+      errors,
+      async () => {
+        await api.exportFamily(values.password)
+        setStarted(true)
+        setBusy(false)
+        setValues({ password: '' })
+      },
+      (failure) => {
+        if (failure.code !== 'WRONG_PASSWORD') return false
+        setWrong(values.password)
+        focusFirstInvalid(form.current)
+        return true
+      },
+    )
+  }
+  return (
+    <form ref={form} className="grid max-w-prose gap-4" onSubmit={send} noValidate>
+      <p className="muted">
+        Download everything GrowKid holds for your family as one .zip file: a file named family.json with every task, note, score and
+        setting, and a folder with the photos and videos still kept. It is yours to keep; nothing changes here.
+      </p>
+      <div className="max-w-md">
+        <PasswordField
+          label="Your password"
+          error={started ? null : shown(errors, 'password')}
+          value={values.password}
+          onChange={field('password')}
+          name="password"
+          autoComplete="current-password"
+        />
+      </div>
+      {problem && (
+        <Message tone="danger" alert>
+          {problem}
+        </Message>
+      )}
+      {started && (
+        <Message tone="success" role="status">
+          The download has started. Open the .zip to find family.json and the proofs folder.
+        </Message>
+      )}
+      <button className="btn btn-secondary justify-self-start" {...busyProps(busy)}>
+        {busy ? 'Preparing…' : 'Download'}
+      </button>
+    </form>
+  )
+}
+
 function DeleteFamily({ user, family }) {
   const deleteFamily = useSession((s) => s.deleteFamily)
   const dialog = useRef(null)
@@ -308,11 +524,7 @@ function DeleteFamily({ user, family }) {
     <div className="grid max-w-prose gap-4">
       <p className="muted">
         This deletes your account, {family.length > 0 ? `the sign-ins of ${names}` : 'every sign-in'}, every task and every proof, and all
-        progress. It cannot be undone. To keep a record, save a report from{' '}
-        <Link to="/parent/progress" className="font-medium text-navy-800 underline underline-offset-4">
-          Progress
-        </Link>{' '}
-        first.
+        progress. It cannot be undone. To keep a copy, download your family’s data above first.
       </p>
       <button type="button" className="btn btn-secondary justify-self-start" onClick={() => dialog.current.showModal()}>
         Delete the family’s data…
@@ -405,6 +617,12 @@ export default function Settings() {
             </h2>
             <Password />
           </section>
+          <section className="mt-8 border-t pt-6" aria-labelledby="recovery-title">
+            <h2 id="recovery-title" className="type-subheading mb-4">
+              Recovery code
+            </h2>
+            <Recovery settings={loaded.data[1]} />
+          </section>
           <section className="mt-8 border-t pt-6" aria-labelledby="devices-section-title">
             <h2 id="devices-section-title" className="type-subheading mb-4">
               Signed-in devices
@@ -417,6 +635,12 @@ export default function Settings() {
             </h2>
             <Country settings={loaded.data[1]} countries={loaded.data[2]} />
           </section>
+          <section className="mt-8 border-t pt-6" aria-labelledby="keep-proof-title">
+            <h2 id="keep-proof-title" className="type-subheading mb-4">
+              Proof photos and videos
+            </h2>
+            <KeepProof settings={loaded.data[1]} />
+          </section>
           <section className="mt-8 border-t pt-6" aria-labelledby="leaderboard-title">
             <h2 id="leaderboard-title" className="type-subheading mb-4">
               Family leaderboard
@@ -428,6 +652,12 @@ export default function Settings() {
               Notifications
             </h2>
             <Nudge />
+          </section>
+          <section className="mt-8 border-t pt-6" aria-labelledby="download-title">
+            <h2 id="download-title" className="type-subheading mb-4">
+              A copy of your family’s data
+            </h2>
+            <Download />
           </section>
           <section className="mt-8 border-t pt-6" aria-labelledby="delete-section-title">
             <h2 id="delete-section-title" className="type-subheading mb-4">

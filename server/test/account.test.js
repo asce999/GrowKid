@@ -7,7 +7,8 @@ import { setTimeout as sleep } from 'node:timers/promises'
 import bcrypt from 'bcryptjs'
 import { ZONES, listCountries, zoneOf } from '../src/countries.js'
 import { db, lockChild } from '../src/db.js'
-import { as, family, start } from './helpers.js'
+import { codeAt, stepAt } from '../src/totp.js'
+import { as, family, moderator, start } from './helpers.js'
 
 let server
 // Rows this file makes directly that no family deletion removes: the test database is never reset, so they go in after().
@@ -54,11 +55,13 @@ test('signUp makes a parent and signs them in; the cookie is HttpOnly, SameSite=
   const email = `Mixed-${tag()}@Example.com`
   const res = await api.post('/parents', { ...GOOD, name: '  Meera  ', email: `  ${email}  ` })
   assert.equal(res.status, 201)
-  assert.deepEqual(res.body, { id: res.body.id, role: 'parent', name: 'Meera', email: email.toLowerCase(), zone: 'Asia/Kolkata' })
+  assert.deepEqual(res.body, { id: res.body.id, role: 'parent', name: 'Meera', email: email.toLowerCase(), zone: 'Asia/Kolkata', recoveryCode: res.body.recoveryCode })
+  assert.match(res.body.recoveryCode, /^[A-Z2-7]{16}$/) // T5: shown this once
   const cookie = res.headers.getSetCookie().find((c) => c.startsWith('growkid='))
   for (const flag of [/; HttpOnly/, /; SameSite=Strict/, /; Path=\/api/, /; Max-Age=604800/]) assert.match(cookie, flag)
   assert.doesNotMatch(cookie, /Secure/) // only in production
-  assert.deepEqual((await api.get('/session')).body, res.body)
+  const { recoveryCode: _shownOnce, ...user } = res.body
+  assert.deepEqual((await api.get('/session')).body, user) // the code is never in the session
   const row = await db.user.findUnique({ where: { id: res.body.id } })
   assert.equal(row.email, email.toLowerCase())
   assert.equal(row.country, 'IN')
@@ -273,16 +276,16 @@ test('changePassword and deleteFamily share a limit of 10 tries per user; anothe
 
 // ------------------------------------------------------------------ settings and countries
 
-test('settings: getSettings holds leaderboard and country; setLeaderboard needs a boolean; setCountry changes what getSettings returns', async () => {
+test('settings: getSettings holds leaderboard, country, how long proof files are kept and whether there is a recovery code; setLeaderboard needs a boolean; setCountry changes what getSettings returns', async () => {
   const mom = await family(server.base, { country: 'GB' })
-  assert.deepEqual((await mom.api.get('/settings')).body, { leaderboard: false, country: 'GB' })
-  assert.deepEqual((await mom.api.put('/settings', { leaderboard: true })).body, { leaderboard: true, country: 'GB' })
+  assert.deepEqual((await mom.api.get('/settings')).body, { leaderboard: false, country: 'GB', keepProofDays: 90, recovery: true })
+  assert.deepEqual((await mom.api.put('/settings', { leaderboard: true })).body, { leaderboard: true, country: 'GB', keepProofDays: 90, recovery: true })
   for (const leaderboard of ['true', 1, null, undefined]) invalid(await mom.api.put('/settings', { leaderboard }), { leaderboard: 'required' })
   for (const country of ['XX', 'us', 5, undefined, '__proto__']) invalid(await mom.api.put('/settings/country', { country }), { country: 'required' })
-  assert.deepEqual((await mom.api.get('/settings')).body, { leaderboard: true, country: 'GB' })
+  assert.deepEqual((await mom.api.get('/settings')).body, { leaderboard: true, country: 'GB', keepProofDays: 90, recovery: true })
   const changed = await mom.api.put('/settings/country', { country: 'US' })
-  assert.deepEqual(changed.body, { leaderboard: true, country: 'US' })
-  assert.deepEqual((await mom.api.get('/settings')).body, { leaderboard: true, country: 'US' })
+  assert.deepEqual(changed.body, { leaderboard: true, country: 'US', keepProofDays: 90, recovery: true })
+  assert.deepEqual((await mom.api.get('/settings')).body, { leaderboard: true, country: 'US', keepProofDays: 90, recovery: true })
   assert.equal((await db.user.findUnique({ where: { id: mom.user.id } })).country, 'US')
 })
 
@@ -482,24 +485,82 @@ test('resetChildPassword: INVALID password, then 204; the old password and every
 test('every parent route refuses a signed-out visitor, a child and a moderator', async () => {
   const mom = await family(server.base)
   const kid = await addChild(mom.api)
-  const email = `mod-${tag()}@example.com`
-  const { id } = await db.user.create({ data: { role: 'moderator', name: 'Mod', email, passwordHash: await bcrypt.hash('moderator-pass', 4) } })
-  made.users.push(id)
-  const moderator = await signedIn(email, 'moderator-pass')
-  assert.equal((await moderator.get('/session')).body.role, 'moderator')
+  const mod = await moderator(server.base)
+  made.users.push(mod.id)
+  assert.equal((await mod.api.get('/session')).body.role, 'moderator')
   const routes = [
     ['post', '/me/sessions/end'], ['post', '/children/x/sessions/end'],
     ['get', '/children'], ['post', '/children', {}], ['get', '/children/x'], ['patch', '/children/x', {}], ['del', '/children/x'],
     ['put', '/children/x/password', {}], ['patch', '/me', {}], ['put', '/me/password', {}], ['post', '/me/delete', {}],
     ['get', '/settings'], ['put', '/settings', {}], ['put', '/settings/country', {}],
+    ['put', '/settings/keep-proof', {}], ['post', '/me/recovery', {}], ['post', '/me/export', {}], // Phase 8: T4, T5, T6
   ]
   const visitors = [
     [as(server.base), 401, 'NOT_SIGNED_IN'],
     [await signedIn(kid.username, kid.password), 403, 'NOT_ALLOWED'],
-    [moderator, 403, 'NOT_ALLOWED'],
+    [mod.api, 403, 'NOT_ALLOWED'],
   ]
   for (const [api, status, code] of visitors) {
     for (const [method, route, body] of routes) refused(await api[method](route, body), status, code)
+  }
+})
+
+// ------------------------------------------------------------------ T1, the moderator's second step
+
+/** A six-digit code that is none of the three the server would take right now. */
+const notNear = (secret) => {
+  const near = [-1, 0, 1].map((d) => codeAt(secret, stepAt() + d))
+  return ['000000', '111111', '222222', '333333'].find((code) => !near.includes(code))
+}
+
+test('T1: a moderator with the right password and no code gets NEEDS_CODE and no cookie; a wrong code is NEEDS_CODE with code wrong; the right code signs in; a wrong password never asks for a code', async () => {
+  const mod = await moderator(server.base)
+  made.users.push(mod.id)
+  await db.user.update({ where: { id: mod.id }, data: { totpLastStep: null } }) // the helper's own sign-in used this step
+  const api = as(server.base)
+  const details = { identifier: mod.email, password: mod.password }
+  for (const extra of [{}, { code: '' }]) {
+    const none = await api.post('/session', { ...details, ...extra })
+    assert.deepEqual([none.status, none.body, none.headers.getSetCookie()], [401, { code: 'NEEDS_CODE' }, []])
+  }
+  const wrong = await api.post('/session', { ...details, code: notNear(mod.secret) })
+  assert.deepEqual([wrong.status, wrong.body, wrong.headers.getSetCookie()], [401, { code: 'NEEDS_CODE', fields: { code: 'wrong' } }, []])
+  const right = await api.post('/session', { ...details, code: codeAt(mod.secret, stepAt()) })
+  assert.equal(right.status, 200)
+  assert.deepEqual(right.body, { id: mod.id, role: 'moderator', name: 'Mod', email: mod.email }) // no secret, no step
+  assert.equal((await api.get('/reports')).status, 200)
+  for (const code of [undefined, '', codeAt(mod.secret, stepAt())]) {
+    refused(await as(server.base).post('/session', { identifier: mod.email, password: 'not-the-password', code }), 401, 'WRONG_DETAILS')
+  }
+})
+
+test('T1: a code signs in once: the same code again is refused, and the same code sent twice at once gives one 200', async () => {
+  const mod = await moderator(server.base)
+  made.users.push(mod.id)
+  await db.user.update({ where: { id: mod.id }, data: { totpLastStep: null } })
+  const details = { identifier: mod.email, password: mod.password, code: codeAt(mod.secret, stepAt()) }
+  assert.equal((await as(server.base).post('/session', details)).status, 200)
+  const again = await as(server.base).post('/session', details)
+  assert.deepEqual([again.status, again.body], [401, { code: 'NEEDS_CODE', fields: { code: 'wrong' } }])
+  await db.user.update({ where: { id: mod.id }, data: { totpLastStep: null } })
+  const both = await Promise.all([1, 2].map(() => as(server.base).post('/session', { ...details, code: codeAt(mod.secret, stepAt()) })))
+  assert.deepEqual(both.map((r) => r.status).sort(), [200, 401])
+  assert.deepEqual(both.find((r) => r.status === 401).body, { code: 'NEEDS_CODE', fields: { code: 'wrong' } })
+})
+
+test('T1: a moderator with no secret cannot sign in, and a parent or a child is never asked for a code', async () => {
+  const mod = await moderator(server.base)
+  made.users.push(mod.id)
+  await db.user.update({ where: { id: mod.id }, data: { totpSecret: null, totpLastStep: null } })
+  const details = { identifier: mod.email, password: mod.password }
+  refused(await as(server.base).post('/session', details), 401, 'NEEDS_CODE')
+  const old = await as(server.base).post('/session', { ...details, code: codeAt(mod.secret, stepAt()) })
+  assert.deepEqual([old.status, old.body], [401, { code: 'NEEDS_CODE', fields: { code: 'wrong' } }])
+  const mom = await family(server.base)
+  const kid = await addChild(mom.api)
+  for (const { identifier, password } of [{ identifier: mom.email, password: mom.password }, { identifier: kid.username, password: kid.password }]) {
+    assert.equal((await as(server.base).post('/session', { identifier, password })).status, 200)
+    assert.equal((await as(server.base).post('/session', { identifier, password, code: '000000' })).status, 200) // a code they send is not read
   }
 })
 

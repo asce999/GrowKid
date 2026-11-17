@@ -19,7 +19,7 @@ function Part({ id, title, children }) {
 
 const link = 'font-medium text-navy-800 underline underline-offset-4'
 // C8: the date this page last changed. A parent's consent is recorded against it: server/src/rules.js PRIVACY_VERSION holds the same date.
-const UPDATED = '16 November 2026'
+const UPDATED = '17 November 2026'
 
 export default function Privacy() {
   const signedIn = Boolean(useSession((s) => s.user))
@@ -83,11 +83,15 @@ export default function Privacy() {
       </Part>
 
       <Part id="moderator-title" title="What a moderator can and cannot see">
-        <p>A moderator reads reports and can do one thing: answer them. A moderator cannot open any family’s pages.</p>
         <p>
-          If a report shows that a child may not be safe, the person who runs GrowKid can pause the family that sent it. While a
-          family is paused, nobody in it can sign in, and nothing of theirs is deleted or changed: it is kept as it was until a person
-          decides what happens next.
+          A moderator reads reports and can do two things: answer them, and pause the family a report came from. A moderator cannot
+          open any family’s pages. A moderator signs in with a password and a second code that changes every 30 seconds.
+        </p>
+        <p>
+          If a report shows that a child may not be safe, a moderator, or the person who runs GrowKid, can pause the family that sent
+          it. While a family is paused, nobody in it can sign in, and nothing of theirs is deleted or changed: it is kept as it was
+          until a person decides what happens next. GrowKid keeps a record of each time a moderator answers a report or pauses a
+          family: which moderator, which report and when. The record holds no words and no names.
         </p>
         <p className="font-semibold">A moderator can see:</p>
         <ul className="grid list-disc gap-1 pl-5">
@@ -129,13 +133,23 @@ export default function Privacy() {
           one back. Proof files stay on the GrowKid server’s own disk, and only the child and their parent can open them.
           Proof can be a photo or a video. Photos and most phone videos are saved without the place they were taken, the camera’s
           details or the time they were made, and under a plain name such as “photo.jpg”; a photo keeps only which way up it goes. A
-          WebM video is kept as sent, and so is the GPS route that some action cameras record alongside the picture. GrowKid no longer
-          takes PDF files, because one can carry its author’s details and other pictures; a PDF sent before can still be downloaded.
+          WebM video is kept as sent. The GPS route that some action cameras record alongside the picture is blanked out of MP4 and
+          QuickTime videos. GrowKid no longer takes PDF files, because one can carry its author’s details and other pictures; a PDF
+          sent before can still be downloaded.
+        </p>
+        <p>
+          A proof’s photo or video is deleted 90 days after its task is approved. A parent can change that to 30 days or a year in
+          Settings. The task, the note and the result stay.
         </p>
         <p>
           When a parent signs up, and again for each child they add, they tick a box to say they are the child’s parent or guardian
           and agree to what this page describes. GrowKid records when they ticked it and which version of this page they saw. It
           cannot check that the person really is the parent.
+        </p>
+        <p>
+          A parent gets a recovery code when they sign up, and can make a new one in Settings. With the code and their email they can
+          set a new password if they forget theirs. GrowKid stores the code scrambled, as it does a password, and cannot show it
+          again. GrowKid does not check that an email address is real, so without the code a parent’s password cannot be reset.
         </p>
         <p>
           GrowKid sets no advertising or analytics cookies and has no trackers. It sets one cookie, which keeps you signed in on this
@@ -151,14 +165,16 @@ export default function Privacy() {
         <p>
           A parent can delete everything from Settings, by typing their password. That deletes the parent’s account, every child’s
           sign-in, every task and repeating task, every proof with its file, every score and sticker, and every report the family sent that a
-          moderator has answered. No copy is kept. Removing one child from Family deletes the same things for that child.
+          moderator has answered. No copy is kept. Removing one child from Family deletes the same things for that child. Before
+          deleting, a parent can download a copy of the family’s data from Settings: one file with what this page lists, and the
+          photos and videos still kept.
         </p>
         <p>
           Deletion keeps one thing: a report that no moderator has answered yet. That is on purpose, so that nobody can make a report
           disappear by deleting an account. The kept report has no account, no id and no link to the family. It holds only its
           words, whether a parent or a child sent it, the time, and a copy of the task as the parent wrote it. If the parent wrote a
           name in the task, that name is in the copy. When a moderator answers the report, it is deleted too, because nobody is
-          left to read the answer.
+          left to read the answer. Deletion also keeps the record of what a moderator did, which names no one.
         </p>
       </Part>
 

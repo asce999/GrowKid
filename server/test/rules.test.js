@@ -5,7 +5,7 @@ import { sniff, strip } from '../src/files.js'
 import { checkQuest, checkTask, dayKeyIn, growthForChild, growthOf, isDay, leaderboardOf, matchesWord, progressOf, recentRest, screen, stickerList } from '../src/rules.js'
 import { dayKey, progress, score, weekKey } from '../src/scoring.js'
 import { itemOf } from '../src/shape.js'
-import { SECRET, box, brokenJpeg, chunk, jpeg, location, mp4, pdf, png, segment, text, track, webm, webp } from './fixtures.js'
+import { SECRET, box, brokenJpeg, chunk, jpeg, location, mp4, pdf, png, routeTrack, segment, text, track, webm, webp, withRoute } from './fixtures.js'
 
 const refusedAs = (code) => (error) => error instanceof ApiError && error.code === code
 const has = (buffer, what) => buffer.includes(what)
@@ -156,6 +156,62 @@ test('A5: a file is an MP4 or a QuickTime movie only if a track of it is video; 
   }
   const noTrack = Buffer.concat([box('ftyp', Buffer.from('isom0000isom')), box('moov', box('mvhd', Buffer.alloc(100))), box('mdat', Buffer.from('x'))])
   assert.throws(() => strip(noTrack, 'video/mp4'), refusedAs('FILE_TYPE'))
+})
+
+/** The types of moov's children, in order. */
+const moovChildren = (stored) => {
+  const at = stored.indexOf('moov') - 4
+  const end = at + stored.readUInt32BE(at)
+  const types = []
+  for (let i = at + 8; i < end; i += stored.readUInt32BE(i)) types.push(stored.toString('latin1', i + 4, i + 8))
+  return types
+}
+
+test('T7: a data track (meta, text, gpmd, sbtl or subt) loses its samples where they lie and becomes a free box; the picture stays and the size is the same', () => {
+  for (const [handler, options] of [['meta', {}], ['gpmd', {}], ['text', {}], ['sbtl', {}], ['subt', {}], ['meta', { wide: true }], ['meta', { perChunk: 1 }]]) {
+    const why = `${handler} ${JSON.stringify(options)}`
+    const original = withRoute(handler, options)
+    assert.equal(has(original, SECRET), true, why)
+    const stored = strip(original, 'video/mp4')
+    assert.equal(stored.length, original.length, why)
+    assert.equal(has(stored, SECRET), false, why)
+    assert.equal(has(stored, 'frames'), true, why)
+    for (const gone of ['stsz', 'stco', 'co64']) assert.equal(has(stored, gone), false, `${why}: ${gone}`)
+    assert.deepEqual(moovChildren(stored), ['mvhd', 'trak', 'free'], why)
+  }
+})
+
+test('T7: a data track whose samples cannot be found is FILE_TYPE', () => {
+  const size = 4096
+  const flooded = Buffer.concat([
+    box('ftyp', Buffer.from('isom'), Buffer.alloc(4), Buffer.from('isom')),
+    box('moov', box('mvhd', Buffer.alloc(100)), track('vide'), routeTrack('meta', Array(50).fill(size - 10), Array(50).fill(0), { perChunk: 1 })),
+    box('mdat', Buffer.alloc(size)),
+  ])
+  const unreadable = [
+    withRoute('meta', { offsets: [0xfffffff0] }), // past the end of the file
+    withRoute('meta', { tables: ['stsz', 'stsc'] }), // no chunk offsets
+    withRoute('meta', { tables: ['stsc', 'stco'] }), // no sample sizes
+    withRoute('meta', {}, [box('moof', Buffer.alloc(8))]), // fragmented: the table does not list every sample
+    flooded, // 50 chunks that each claim nearly the whole file: the work is bounded by the file's own size
+  ]
+  for (const [i, original] of unreadable.entries()) assert.throws(() => strip(original, 'video/mp4'), refusedAs('FILE_TYPE'), `case ${i}`)
+})
+
+test('T7: a sample table claiming four billion samples of one size is refused at once, not walked', () => {
+  const u32s = (...numbers) => Buffer.concat(numbers.map((n) => Buffer.from([n >>> 24, (n >>> 16) & 255, (n >>> 8) & 255, n & 255])))
+  const most = 0xffffffff
+  const stbl = box('stbl', box('stsz', u32s(0, 1, most)), box('stsc', u32s(0, 1, 1, most, 1)), box('stco', u32s(0, 1, 0)))
+  const trak = box('trak', box('mdia', box('hdlr', Buffer.alloc(8), Buffer.from('gpmd'), Buffer.alloc(12)), box('minf', stbl)))
+  const original = Buffer.concat([box('ftyp', Buffer.from('isom'), Buffer.alloc(4), Buffer.from('isom')), box('moov', box('mvhd', Buffer.alloc(100)), track('vide'), trak), box('mdat', Buffer.from('frames'))])
+  const started = Date.now()
+  assert.throws(() => strip(original, 'video/mp4'), refusedAs('FILE_TYPE'))
+  assert.ok(Date.now() - started < 1000, `took ${Date.now() - started} ms`)
+})
+
+test('T7: a video with no data track is stored exactly as before', () => {
+  const original = Buffer.concat([box('ftyp', Buffer.from('isom'), Buffer.alloc(4), Buffer.from('isom')), box('moov', box('mvhd', Buffer.alloc(100)), track('vide'), track('soun')), box('mdat', Buffer.from('frames'))])
+  assert.equal(strip(original, 'video/mp4').equals(original), true)
 })
 
 test('text keeps what was typed: a NUL is removed, a lone surrogate becomes U+FFFD, a non-string is empty', () => {

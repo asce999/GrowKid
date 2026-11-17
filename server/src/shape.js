@@ -34,11 +34,15 @@ const asReview = (p) => ({
   cheer: p.cheerKind || p.cheerLine ? { kind: p.cheerKind, line: p.cheerLine } : undefined,
 })
 
-/** A Proof row as index.js's Proof. fileUrl only when `files` is set (getTask, sendProof and the review answer: section 6). */
-export const asProof = (p, files) => ({
+/**
+ * A Proof row as index.js's Proof. fileUrl only when `files` is set (getTask, sendProof and the review answer: section 6), and
+ * never once the file is removed for age (T4). `approvedAt` is when its task was approved, for how many days it was kept.
+ */
+export const asProof = (p, files, approvedAt) => ({
   id: p.id,
   note: p.note,
-  fileUrl: files && p.fileType ? `/api/proofs/${p.id}/file` : undefined,
+  fileUrl: files && p.fileType && !p.removedAt ? `/api/proofs/${p.id}/file` : undefined,
+  removed: p.removedAt ? { at: p.removedAt.toISOString(), afterDays: approvedAt ? Math.floor((p.removedAt - approvedAt) / 86_400_000) : undefined } : undefined, // T4
   fileName: p.fileName ?? undefined,
   fileType: p.fileType ?? undefined,
   fileSize: p.fileSize ?? undefined,
@@ -48,23 +52,26 @@ export const asProof = (p, files) => ({
 })
 
 /** A Task row read with `taskWith` (its child's name and its proofs, oldest first) as index.js's Task. */
-export const asTask = (row, { files = false } = {}) => ({
-  id: row.id,
-  childId: row.childId,
-  childName: row.child.name,
-  category: row.category,
-  title: row.title,
-  instructions: row.instructions,
-  dueAt: row.dueAt.toISOString(),
-  points: row.points,
-  status: row.status,
-  createdAt: row.createdAt.toISOString(),
-  doneLooksLike: row.doneLooksLike ?? '', // H5
-  seriesId: row.seriesId ?? undefined, // H2: made by a repeating series
-  proofs: row.proofs.map((proof) => asProof(proof, files)),
-  resultSeen: row.resultSeen,
-  pinned: row.pinned,
-})
+export const asTask = (row, { files = false } = {}) => {
+  const approvedAt = row.proofs.find((proof) => proof.result === 'approved')?.reviewedAt // T4: what a removed file's days count from
+  return {
+    id: row.id,
+    childId: row.childId,
+    childName: row.child.name,
+    category: row.category,
+    title: row.title,
+    instructions: row.instructions,
+    dueAt: row.dueAt.toISOString(),
+    points: row.points,
+    status: row.status,
+    createdAt: row.createdAt.toISOString(),
+    doneLooksLike: row.doneLooksLike ?? '', // H5
+    seriesId: row.seriesId ?? undefined, // H2: made by a repeating series
+    proofs: row.proofs.map((proof) => asProof(proof, files, approvedAt)),
+    resultSeen: row.resultSeen,
+    pinned: row.pinned,
+  }
+}
 
 /** A Reward as index.js documents it. */
 export const asReward = ({ id, title, cost }) => ({ id, title, cost })
@@ -99,7 +106,9 @@ export const itemOf = (task) => ({
 
 /**
  * A Report row as index.js documents it (rule 15). It never says who sent it, so byId never leaves (rule 16). For the moderator, a
- * kept report whose sender was deleted says so with senderGone (A11): nobody is left to read an answer to it.
+ * kept report whose sender was deleted says so with senderGone (A11): nobody is left to read an answer to it. T2: for the moderator,
+ * read with the sender's and their parent's pausedAt, it says whether the sender's family is paused: only that yes or no leaves,
+ * never who.
  */
 export const asReport = (row, { moderator = false } = {}) => ({
   id: row.id,
@@ -109,4 +118,5 @@ export const asReport = (row, { moderator = false } = {}) => ({
   item: row.item ?? undefined,
   resolution: row.resolvedAt ? { note: row.resolutionNote, at: row.resolvedAt.toISOString() } : undefined,
   senderGone: moderator && row.byId === null ? true : undefined,
+  paused: moderator && (row.by?.pausedAt || row.by?.parent?.pausedAt) ? true : undefined,
 })

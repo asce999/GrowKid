@@ -115,6 +115,40 @@ export const track = (handler = 'vide') => box('trak', box('mdia', box('hdlr', B
 export const mp4 = (inMoov = [location()], brand = 'isom', handler = 'vide') =>
   Buffer.concat([box('ftyp', Buffer.from(brand.padEnd(4)), Buffer.alloc(4), Buffer.from('isom')), box('moov', box('mvhd', Buffer.alloc(100)), track(handler), ...inMoov), box('mdat', Buffer.from('frames'))])
 
+const be32 = (...numbers) => Buffer.concat(numbers.map((n) => {
+  const four = Buffer.alloc(4)
+  four.writeUInt32BE(n)
+  return four
+}))
+const be64 = (n) => {
+  const eight = Buffer.alloc(8)
+  eight.writeBigUInt64BE(BigInt(n))
+  return eight
+}
+
+/** T7: a data track (`handler`: meta, text or gpmd) whose samples of these sizes sit in chunks at these offsets, `perChunk` samples to a chunk. */
+export const routeTrack = (handler, sizes, offsets, { perChunk = sizes.length, wide = false, tables = ['stsz', 'stsc', 'stco'] } = {}) => {
+  const all = {
+    stsz: box('stsz', be32(0, 0, sizes.length, ...sizes)),
+    stsc: box('stsc', be32(0, 1, 1, perChunk, 1)),
+    stco: wide ? box('co64', be32(0, offsets.length), ...offsets.map(be64)) : box('stco', be32(0, offsets.length, ...offsets)),
+  }
+  return box('trak', box('tkhd', Buffer.alloc(84)), box('mdia', box('mdhd', Buffer.alloc(24)), box('hdlr', Buffer.alloc(8), Buffer.from(handler), Buffer.alloc(12)), box('minf', box('stbl', ...tables.map((name) => all[name])))))
+}
+
+/** T7: an MP4 with a video track and a data track whose route (two samples, each holding SECRET) lies in mdat after the frames. `options.offsets` puts the chunks elsewhere. */
+export const withRoute = (handler = 'meta', options = {}, extraTop = []) => {
+  const route = [Buffer.from(`${SECRET}-one`), Buffer.from(`${SECRET}-two!`)]
+  const build = (offsets) => [
+    box('ftyp', Buffer.from('isom'), Buffer.alloc(4), Buffer.from('isom')),
+    box('moov', box('mvhd', Buffer.alloc(100)), track('vide'), routeTrack(handler, route.map((r) => r.length), offsets, options)),
+    ...extraTop,
+  ]
+  const before = Buffer.concat(build(options.perChunk === 1 ? [0, 0] : [0])).length + 8 + 'frames'.length // mdat's header, then the frames
+  const offsets = options.offsets ?? (options.perChunk === 1 ? [before, before + route[0].length] : [before])
+  return Buffer.concat([...build(offsets), box('mdat', Buffer.from('frames'), ...route)])
+}
+
 export const pdf = () => Buffer.from('%PDF-1.4\n1 0 obj\n<< >>\nendobj\ntrailer\n<< >>\n%%EOF\n')
 export const webm = () => Buffer.concat([Buffer.from([0x1a, 0x45, 0xdf, 0xa3]), Buffer.alloc(40, 1)])
 export const text = () => Buffer.from('This is only text, whatever it is called.')
