@@ -201,7 +201,8 @@ family.post('/requests/seen', async (req, res) => {
   const me = only(req, 'child')
   const { ids } = req.body ?? {}
   if (!Array.isArray(ids) || ids.length > 200 || !ids.every((id) => typeof id === 'string')) refuse('INVALID', { ids: 'format' })
-  await db.rewardRequest.updateMany({ where: { childId: me.id, id: { in: ids } }, data: { answerSeen: true } })
+  // text(): a NUL or a lone surrogate in an id would be a 500 from the database, not an id that matches nothing (Phase 9, F1)
+  await db.rewardRequest.updateMany({ where: { childId: me.id, id: { in: ids.map(text) } }, data: { answerSeen: true } })
   res.status(204).end()
 })
 

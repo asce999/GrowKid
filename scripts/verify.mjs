@@ -16,17 +16,26 @@ const npm = (dir, script) => () => {
 }
 
 /** The data boundary: `pattern` may appear in client/src only inside client/src/api/. Resolves to the lines that break it. */
-const boundary = (pattern) => () => {
+const boundary = (pattern, everywhere = false) => () => {
   const src = path.join(root, 'client', 'src')
   const found = []
   for (const entry of readdirSync(src, { recursive: true, withFileTypes: true })) {
     const file = path.join(entry.parentPath, entry.name)
     const inside = path.relative(src, file).split(path.sep)
-    if (!entry.isFile() || inside[0] === 'api' || !/\.(js|jsx)$/.test(entry.name)) continue
+    if (!entry.isFile() || (!everywhere && inside[0] === 'api') || !/\.(js|jsx)$/.test(entry.name)) continue
     readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
       if (pattern.test(line)) found.push(`client/src/${inside.join('/')}:${i + 1}: ${line.trim()}`)
     })
   }
+  return found.length ? found.join('\n') : null
+}
+
+/** Phase 9: no development switch may be left in the built app: the demo sign-ins, the clock header, the dev-mode key. Resolves to the built files that hold one. */
+const builtWithout = (pattern) => () => {
+  const dist = path.join(root, 'client', 'dist')
+  const found = readdirSync(dist, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile() && /\.(js|css|html)$/.test(entry.name) && pattern.test(readFileSync(path.join(entry.parentPath, entry.name), 'utf8')))
+    .map((entry) => `client/dist/${path.relative(dist, path.join(entry.parentPath, entry.name)).split(path.sep).join('/')} holds a development switch`)
   return found.length ? found.join('\n') : null
 }
 
@@ -39,10 +48,12 @@ const checks = [
   ['client lint', npm('client', 'lint'), true],
   ['client check', npm('client', 'check'), true],
   ['client build', npm('client', 'build'), true],
+  ['built app: no development switch', builtWithout(/growkid-demo|X-Clock-Days|growkid\.dev/), true],
   ['client size', npm('client', 'check:size'), has('client', 'scripts', 'size-check.js')],
   ['end-to-end', npm('client', 'e2e'), !quick && has('client', 'playwright.config.js')],
   ['boundary: browser storage only in client/src/api', boundary(/localStorage|sessionStorage|indexedDB/), true],
   ['boundary: axios only in client/src/api', boundary(/from ['"]axios['"]/), true],
+  ['boundary: no page builds HTML from data', boundary(/dangerouslySetInnerHTML|\.innerHTML\s*=|\.outerHTML\s*=|insertAdjacentHTML|document\.write/, true), true],
 ]
 
 let failed = 0

@@ -61,6 +61,38 @@ Out of reach of code: the machine itself. Whoever has the Windows account has th
 
 Done means: every row has a passing test or a written acceptance in this file, and the Phase 9 attack pass ends with no high finding open.
 
+**Tried in Phase 9 (18 November 2026).** 47 attacks in 8 groups, against the test server on `127.0.0.1`: 46 tried, 38 held, 3 found and fixed (two findings), 5 accepted, 1 not rerun.
+
+*Held, and now pinned by a test:*
+- **Tokens,** 4 of 4: no token, garbled, `alg: none`, another secret, HS384 with the right secret, expired, payload or signature changed, another user's `sub` with the signature kept, a `sub` that is not text, no claims, the version as text or missing, a cookie-parser object, an old `tokenVersion`, a paused family's token. `security.test.js` (the `who:` and forged-cookie tests), `safety.test.js` C6.
+- **Requests,** 5 of 6 held, the sixth was F1: a write without `X-GrowKid` on every write route, form-encoded, `text/plain` and multipart bodies, `__proto__` and `constructor`, a hostile `:id` (NUL, lone surrogate, path, 300 characters, bad escape), a body over the limit, gzipped or nested past it. `security.test.js`, `attack.test.js`.
+- **Role and field,** 5 of 5: every role on every route it is not for, over the route list read from the routers (69 routes); another family's ids on every route that takes one and in a body; a brother's or sister's ids; 33 fields a write does not name. `security.test.js`, `attack.test.js`.
+- **Races,** 4 of 5 held, the fifth accepted below: two approvals, two reward requests at the edge of the balance, a proof sent while the family or the task is deleted, the same recovery or moderator code twice. `tasks.test.js`, `family.test.js`, `account.test.js`, `trust.test.js`.
+- **Files,** 9 of 10, the tenth not rerun: a file that claims another type, thousands of tiny parts, MP4 boxes that overrun, shrink or are cut short, a box of size 0, a second JPEG picture, a path in the proof id, a crafted GPS track, a proof file opened as a page, PNG, WebP and JPEG lengths that point past the file, files of 0 to 4 bytes. `rules.test.js`, `tasks.test.js`, `safety.test.js`, `security.test.js`. The 25 MB worst case for the walkers (201 ms) was measured by the planning session before Phase 8, not rerun.
+- **Guessing,** 3 held: sign-in takes the same time for an unknown account (323 ms) and a wrong password (313 ms), 1.03 times; `/recovery` for an unknown email (319 ms), an account with no code (306 ms) and a wrong code (324 ms), 1.06 times (medians of 7, interleaved; pass at 1.25). `PAUSED` shows only after the right password or code. `account.test.js`, `trust.test.js`, `safety.test.js`.
+- **Slow callers,** 1 held besides N1: an upload that stalls after its headers gives its place back when the response closes. `tasks.test.js` (L8).
+- **The rest of the table,** 7 of 8, the eighth accepted below: cached pages, a made-up forwarded address, flooding sign-in, the server's log, moving the clock, no page builds HTML from data, no development switch in the built app. `security.test.js`, `account.test.js`, `safety.test.js`, `boot.test.js`, `client/src/hooks/pageCache.check.js`, and two new checks in `scripts/verify.mjs`.
+
+*Found and fixed:*
+- **F1, a NUL in a seen id.** `POST /api/requests/seen` with an id holding a NUL or a lone surrogate answered `500`. The ids now go through `text()` like their twin in `tasks.js`: `server/src/routes/family.js:205`. Test: `attack.test.js`, the NUL test, `answers seen` 204. No other `in:` takes values from a body unchecked.
+- **N1, stalled callers.** Node's defaults gave a caller 60 seconds for its headers and 300 for the request, so four stalled uploads could close uploading for five minutes. Now 15 and 120 seconds: `server/src/index.js:43`. Tests: `boot.test.js`, `a caller that never finishes its headers is cut off with 408…`; a body that never finishes was tried once by hand and closed after 121.9 s with `408 Request Timeout`.
+
+*Accepted, and why:*
+- Sign-up says an email is taken, and adding a child says a username is taken: with no email to send to, nothing else can say why. Both are limited (20 an hour).
+- A moderator's sign-in says when the password was right (`NEEDS_CODE`), because a second step cannot hide the first. Tries count against the sign-in limits.
+- Whoever knows a username can lock that account for up to an hour (L1).
+- Two requests at the same moment can pass a cap by one (L6), and uploads can pass the storage quota by the files in flight, at most 4 of 25 MB (`attack.test.js`, the quota test; the `ponytail:` note in `sendProof`).
+- The limits are kept in memory, so they start again when the server restarts.
+- A program on the same computer that calls the server's own port, without the proxy, can name any address (F1 of rule 28).
+- A copied session token works until it expires or the account's `tokenVersion` moves (`auth.js`, the `ponytail:` note). "Sign out other devices" moves it.
+- A WebM video is stored as sent.
+- An MP4 box of size 0 placed in front of a `udta` holds that `udta` as its contents, so it is not blanked. To a reader that follows the format the file has no `udta`. Only a file built by hand has this, and what it keeps is the uploader's own.
+- A request body that never finishes is cut off after 120 seconds: closed after 121.9 s with `408`. Tried once by hand, not in the suite.
+- A caller that reads an answer slowly is not cut off, and the server caps neither connections nor answers in flight. Not tried. On one machine behind Vite's proxy, accepted.
+- The machine itself: whoever has the Windows account has the database, the photos and `server/.env`.
+- The server's 3 advisories are in Prisma's command-line tool, not in anything that answers a request.
+- The client's 5 advisories (new since 15 November) are one: picomatch's ReDoS (GHSA-fc5q-39xc-vjpf) inside Vite's file matching. No fixed picomatch was published on 18 November (latest 4.0.7). It matches the globs in the app's own build config, never anything a caller sends, and is not in the built app.
+
 **Fast.**
 - No JavaScript file over 200 kB, React DOM excepted (capped at 230 kB); before Phase 4, one file of 569 kB.
 - A child with 1,000 approved tasks gets a default task list without them, and an approval for a child with 2,000 approved tasks finishes in under a second on this machine.
@@ -503,8 +535,8 @@ Acceptance:
 
 Build nothing new here. Find what the earlier phases missed, and put numbers on what they changed.
 
-1. - [ ] **Every route, tried from the wrong family.** In `server/test/security.test.js`, build the route list from the routers themselves, so a new route cannot be forgotten. Over that list, check that a second family's ids answer `NOT_FOUND` on every route, that a moderator is refused on every family route, and that a signed-out caller is refused everywhere but the public ones. **(S, review, audit)**
-2. - [ ] **The attack pass.** Go down the table in section 2 and try each attack against the test server on `127.0.0.1`. Each one that works is fixed and gets a test; each one that fails gets a test too, so it stays failed. Cover at least:
+1. - [x] **Every route, tried from the wrong family.** In `server/test/security.test.js`, build the route list from the routers themselves, so a new route cannot be forgotten. Over that list, check that a second family's ids answer `NOT_FOUND` on every route, that a moderator is refused on every family route, and that a signed-out caller is refused everywhere but the public ones. **(S, review, audit)**
+2. - [x] **The attack pass.** Go down the table in section 2 and try each attack against the test server on `127.0.0.1`. Each one that works is fixed and gets a test; each one that fails gets a test too, so it stays failed. Cover at least:
    - **Tokens:** an unsigned token, the wrong algorithm, an expired one, an old `tokenVersion`, another user's id.
    - **Requests:** a write with no `X-GrowKid` header, with a form content type, with `__proto__` and `constructor` in the JSON, with a NUL and a lone surrogate in every text field, with a body over the size limit.
    - **Role and field:** a child calling each parent route; `role`, `status`, `tokenVersion`, `pausedAt` and `parentId` sent in a body.

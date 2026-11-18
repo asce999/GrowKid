@@ -412,3 +412,67 @@ test('checkQuest: ranges, a quest already reached this week is "done", and the s
   assert.throws(() => checkQuest({ target: 2, bonus: 10, surprise: 'a dare' }, snapshot(), now), (e) => e.code === 'SCREENED')
   assert.throws(() => checkQuest({ target: 1, bonus: 7, surprise: 5 }, snapshot(), now), (e) => Object.keys(e.fields).sort().join() === 'bonus,surprise,target')
 })
+
+// ------------------------------------------------------------------ crafted files (final plan Phase 9)
+
+test('MP4: a box that runs past its parent, a size under 8, a 64-bit size past the file or under its own head, and a head cut short are FILE_TYPE', () => {
+  const bad = refusedAs('FILE_TYPE')
+  const ftyp = box('ftyp', Buffer.from('isom0000isom'))
+  /** A box whose size field says `size`, whatever it holds. */
+  const sized = (size, type, ...parts) => {
+    const made = box(type, ...parts)
+    made.writeUInt32BE(size)
+    return made
+  }
+  /** A file whose moov has a 64-bit size field saying `size`. */
+  const wide = (size) => {
+    const head = Buffer.alloc(16)
+    head.writeUInt32BE(1)
+    head.write('moov', 4, 'latin1')
+    head.writeBigUInt64BE(size, 8)
+    return Buffer.concat([ftyp, head, track()])
+  }
+  const real = 16 + track().length
+  strip(wide(BigInt(real)), 'video/mp4') // the control: the true size parses
+  assert.throws(() => strip(Buffer.concat([ftyp, box('moov', track(), sized(999, 'udta', Buffer.from(SECRET))), box('mdat')]), 'video/mp4'), bad, 'a udta longer than its moov')
+  assert.throws(() => strip(Buffer.concat([ftyp, box('moov', sized(999, 'trak', track().subarray(8)))]), 'video/mp4'), bad, 'a trak longer than its moov')
+  for (const size of [2, 4, 7]) assert.throws(() => strip(Buffer.concat([ftyp, box('moov', track(), sized(size, 'udta'))]), 'video/mp4'), bad, `a size of ${size}`)
+  for (const size of [BigInt(real + 1), 1n << 40n, 0xffffffffffffffffn, 8n, 0n]) assert.throws(() => strip(wide(size), 'video/mp4'), bad, `a 64-bit size of ${size}`)
+  assert.throws(() => strip(Buffer.concat([ftyp, Buffer.from([0, 0, 0, 1]), Buffer.from('moov')]), 'video/mp4'), bad, 'a 64-bit size that is not there')
+  assert.throws(() => strip(Buffer.concat([ftyp, box('moov', track()), Buffer.from([0, 0, 0])]), 'video/mp4'), bad, 'three bytes left over')
+})
+
+test('MP4: a box of size 0 that is not the last runs to the end, as the format says, so what follows a udta of size 0 is blanked with it', () => {
+  const start = [box('ftyp', Buffer.from('isom0000isom')), box('moov', box('mvhd', Buffer.alloc(100)), track())]
+  const udta = location()
+  udta.writeUInt32BE(0) // size 0: to the end of the file
+  const original = Buffer.concat([...start, udta, box('mdat', Buffer.from('frames'))])
+  const stored = strip(original, 'video/mp4')
+  assert.equal(stored.length, original.length)
+  assert.equal(has(stored, SECRET), false)
+  assert.equal(has(stored, 'frames'), false) // inside the udta, by the format's own rule
+  // Accepted (Phase 9): the other way round, a box of size 0 in front of a udta holds that udta as its contents, so no udta is found
+  // and its bytes stay. To a reader that follows the format there is no udta in that file either. Only a file built by hand has
+  // this, and what it keeps is the uploader's own.
+})
+
+test('lengths that point past the file are FILE_TYPE, never a 500', () => {
+  const bad = refusedAs('FILE_TYPE')
+  const header = png()
+  header.writeUInt32BE(0xffffffff, 8) // the first chunk says it is 4 GB long
+  assert.throws(() => strip(header, 'image/png'), bad)
+  assert.throws(() => strip(png().subarray(0, 10), 'image/png'), bad) // ends inside a chunk's length
+  assert.throws(() => strip(png(chunk('tEXt', Buffer.alloc(5))).subarray(0, 40), 'image/png'), bad) // ends inside a chunk
+  for (const [at, size] of [[4, webp().length], [4, 0xffffffff], [4, 3], [16, 0xffffffff], [16, 0xfffffff0]]) {
+    const picture = webp()
+    picture.writeUInt32LE(size, at) // 4: the RIFF size; 16: the first chunk's size
+    assert.throws(() => strip(picture, 'image/webp'), bad, `WebP ${at} ${size}`)
+  }
+  assert.throws(() => strip(Buffer.from('RIFF\0\0\0\0WEBP'), 'image/webp'), bad) // a RIFF size of nothing
+  const start = Buffer.from([0xff, 0xd8])
+  for (const length of [0, 1, 0xffff]) assert.throws(() => strip(Buffer.concat([start, Buffer.from([0xff, 0xe1, length >> 8, length & 255]), Buffer.from('Exif\0\0')]), 'image/jpeg'), bad, `JPEG ${length}`)
+  assert.throws(() => strip(Buffer.concat([start, segment(0xe0, 'JFIF'), Buffer.from([0xff])]), 'image/jpeg'), bad) // ends inside a marker
+  for (const [bytes, type] of [[Buffer.alloc(0), 'image/jpeg'], [Buffer.alloc(0), 'image/png'], [Buffer.alloc(0), 'image/webp'], [Buffer.alloc(0), 'video/mp4'], [Buffer.from([0xff, 0xd8, 0xff]), 'image/jpeg'], [Buffer.from('89504e47', 'hex'), 'image/png']]) {
+    assert.throws(() => strip(bytes, type), bad, `${type} of ${bytes.length} bytes`)
+  }
+})

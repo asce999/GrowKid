@@ -1,4 +1,5 @@
 import { mkdir } from 'node:fs/promises'
+import http from 'node:http'
 import path from 'node:path'
 
 const env = process.env
@@ -37,10 +38,11 @@ const { default: app } = await import('./app.js')
 const { removeOldProofFiles, sweepOrphans } = await import('./files.js')
 const swept = await sweepOrphans().catch((error) => console.error(`GrowKid could not check the upload folder for files left behind (${error.code ?? error.name})`)) // housekeeping: the server still starts
 if (swept) console.log(`GrowKid removed ${swept} proof file${swept === 1 ? '' : 's'} that no proof names`)
-const server = app.listen(Number(env.PORT), '127.0.0.1', (err) => {
-  if (err) fail(`cannot listen (${err.code ?? 'error'})`)
-  console.log(`GrowKid server listening on 127.0.0.1:${server.address().port}`)
-})
+// N1: a caller that stalls is cut off: 15 seconds for a request's headers, 120 for the whole request (Node's own 60 and 300 would let
+// four stalled uploads hold every upload place for five minutes). Checked every 5 seconds.
+const server = http.createServer({ headersTimeout: 15_000, requestTimeout: 120_000, connectionsCheckingInterval: 5_000 }, app)
+server.once('error', (err) => fail(`cannot listen (${err.code ?? 'error'})`))
+server.listen(Number(env.PORT), '127.0.0.1', () => console.log(`GrowKid server listening on 127.0.0.1:${server.address().port}`))
 // T4: old proof files go at start-up and once a day, by the real clock. unref: the timer never keeps the process alive.
 const tidy = () =>
   removeOldProofFiles(new Date()).then(

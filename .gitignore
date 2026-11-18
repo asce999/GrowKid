@@ -1,13 +1,14 @@
-# OS specific
+# One ignore file for the whole repo: rules without a leading slash apply in client/ and server/ too.
+
+# OS
 .DS_Store
-.DS_Store?
 ._*
 .Spotlight-V100
 .Trashes
 ehthumbs.db
 Thumbs.db
 
-# IDEs and Editors
+# Editors
 .vscode/
 .idea/
 *.suo
@@ -16,28 +17,29 @@ Thumbs.db
 *.sln
 *.sw?
 
-# Global environment variables
+# Secrets: client/.env, server/.env, server/.env.test
 .env
-.env.local
 .env.*
+*.local
 !.env.example
 
 # Dependencies and build output
 node_modules/
 dist/
+dist-ssr/
+build/
 
 # Logs
+logs/
 *.log
 
-# Word lock files, created while a .docx is open
+# Word and Excel lock files, created while a document is open
 ~$*
 
-# Browser automation working files
+# Browser automation and end-to-end test output
 .playwright-mcp/
+test-results/
+playwright-report/
 
 # Working brief for the current build phase, rewritten every phase
 /prompt.md
-
-# End-to-end test output
-test-results/
-playwright-report/

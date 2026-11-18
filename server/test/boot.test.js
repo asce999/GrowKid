@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
+import { once } from 'node:events'
+import net from 'node:net'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -125,5 +127,32 @@ test('S11: families in India and the United States sending proof at the same ins
   } finally {
     await Promise.all(mothers.map((mom) => mom.api.post('/me/delete', { password: mom.password })))
     await server.close()
+  }
+})
+
+test('a caller that never finishes its headers is cut off with 408 within 25 seconds, and an ordinary request is answered (N1)', { timeout: 45_000 }, async () => {
+  const child = spawn(process.execPath, [entry], { env: { ...process.env, PORT: '0' } })
+  let out = ''
+  const listening = new Promise((done, fail) => {
+    child.stdout.on('data', (chunk) => {
+      const found = /listening on 127\.0\.0\.1:(\d+)/.exec((out += chunk))
+      if (found) done(Number(found[1]))
+    })
+    child.on('exit', (code) => fail(new Error(`exited with ${code}`)))
+  })
+  try {
+    const port = await listening
+    const began = Date.now()
+    const socket = net.connect(port, '127.0.0.1')
+    socket.write('GET /api/session HTTP/1.1\r\nHost: x\r\n') // the headers never end
+    let answer = ''
+    socket.on('data', (chunk) => (answer += chunk))
+    assert.equal((await fetch(`http://127.0.0.1:${port}/api/session`)).status, 200) // meanwhile, a caller that does finish is served
+    await once(socket, 'close')
+    const seconds = (Date.now() - began) / 1000
+    assert.match(answer, /^HTTP\/1\.1 408 /)
+    assert.ok(seconds >= 14 && seconds < 25, `cut off after ${seconds} s`)
+  } finally {
+    child.kill()
   }
 })

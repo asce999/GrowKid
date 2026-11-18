@@ -172,6 +172,8 @@ tasks.post('/tasks/:id/proofs', proofLimit, mayReceiveProof, upload, async (req,
     Object.assign(proof, { fileName: NAMES[type], fileType: type, fileSize: bytes.length }) // C3: never the device's name
     // L6 and L9, before anything is written: the family's files with this one, then the room left on the drive. T4: a file
     // removed for age no longer takes room.
+    // ponytail: summed before the transaction and without a lock, so uploads at the same moment can each pass: the family ends over
+    // by the files in flight, at most 4 of 25 MB (L8). Take the parent's row lock around the sum and the insert if that matters.
     const held = await db.proof.aggregate({ _sum: { fileSize: true }, where: { removedAt: null, task: { child: { parentId: req.user.parentId } } } })
     if ((held._sum.fileSize ?? 0) + bytes.length > STORAGE_BYTES) refuse('QUOTA', { quota: 'storage' })
     if (!(await hasRoom(process.env.UPLOAD_DIR, bytes.length, FREE_BYTES))) refuse('QUOTA', { quota: 'disk' })
