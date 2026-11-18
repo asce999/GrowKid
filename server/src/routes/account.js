@@ -237,7 +237,7 @@ async function erase(userIds) {
     await tx.report.deleteMany({ where: { byId: { in: userIds }, resolvedAt: { not: null } } })
     await tx.user.deleteMany({ where: { id: { in: userIds } } })
     return proofs.map((proof) => proof.id)
-  })
+  }, { maxWait: 10_000, timeout: 60_000 }) // Prisma's 2 s and 5 s are too short for a family with years of tasks on a slow machine (P2028)
   await removeFiles(proofIds)
 }
 

@@ -15,6 +15,9 @@ export async function start() {
   await db.report.deleteMany({ where: { resolvedAt: null } })
   const { default: app } = await import('../src/app.js')
   const server = app.listen(0, '127.0.0.1')
+  // The server never drops an idle socket here (close() ends them all). Its 5 s default raced fetch's own idle timer: on a slow CI
+  // runner a POST went out on a socket the server was closing, and fetch does not retry a POST ("fetch failed").
+  server.keepAliveTimeout = 0
   await once(server, 'listening')
   return {
     base: `http://127.0.0.1:${server.address().port}/api`,
@@ -41,7 +44,9 @@ export function as(base, { ip, days } = {}) {
       headers['content-type'] ??= 'application/json'
       body = typeof body === 'string' ? body : JSON.stringify(body) // a string is sent as is, to test malformed JSON
     }
-    const res = await fetch(base + path, { method, headers, body })
+    const res = await fetch(base + path, { method, headers, body }).catch((err) => {
+      throw new Error(`${method} ${path}: ${err.message} (${err.cause?.code ?? err.cause?.message})`, { cause: err }) // "fetch failed" alone names no reason
+    })
     for (const set of res.headers.getSetCookie()) {
       const pair = set.split(';')[0]
       cookie = pair.endsWith('=') ? '' : pair // a cleared cookie arrives empty
